@@ -1,0 +1,22 @@
+import { Router } from "express";
+import { pool } from "../db.js";
+
+export const studentRouter = Router();
+
+studentRouter.get("/student/:id", async (req, res) => {
+  const { rows } = await pool.query(`SELECT * FROM students WHERE student_id = $1`, [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: "not found" });
+  res.json(rows[0]);
+});
+
+studentRouter.post("/student", async (req, res) => {
+  const { student_id, name, email, jee_score } = req.body || {};
+  if (!student_id || !name) return res.status(400).json({ error: "student_id and name required" });
+  await pool.query(
+    `INSERT INTO students (student_id, name, email, jee_score)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (student_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, jee_score = EXCLUDED.jee_score`,
+    [student_id, name, email || null, jee_score || null],
+  );
+  res.json({ ok: true });
+});
