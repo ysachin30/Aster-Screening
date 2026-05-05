@@ -132,6 +132,8 @@ function InterviewPageContent() {
   const name = params.get("name") || "Student";
   const sid = params.get("sid") || "";
   const [token, setToken] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [isIntroductionPhase, setIsIntroductionPhase] = useState(true);
 
   useEffect(() => {
     if (!room) return;
@@ -191,7 +193,14 @@ function InterviewPageContent() {
     >
       <RoomAudioRenderer />
       <AudioUnlockGate>
-        <InterviewStage name={name} />
+        <InterviewStage 
+          name={name} 
+          isIntroductionPhase={isIntroductionPhase}
+          setIsIntroductionPhase={setIsIntroductionPhase}
+          question={QUESTIONS[0]} // Default to first question
+          frozen={false}
+          onCanvasReady={() => {}}
+        />
       </AudioUnlockGate>
     </LiveKitRoom>
   );
@@ -215,17 +224,12 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
 
   if (!unlocked) {
     return (
-      <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-indigo-600/10 blur-[140px] animate-float" />
-          <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full bg-violet-600/8 blur-[120px] animate-float-delayed" />
-        </div>
-        <div className="glass rounded-3xl p-10 max-w-sm w-full text-center animate-fade-up shadow-2xl shadow-black/60 relative z-10 border border-white/8">
-          <div className="relative flex items-center justify-center w-24 h-24 mx-auto mb-8">
-            <div className="absolute inset-0 rounded-full bg-indigo-500/15 animate-ping" style={{ animationDuration: "2s" }} />
-            <div className="absolute inset-3 rounded-full bg-indigo-500/10 animate-ping" style={{ animationDuration: "2.6s", animationDelay: "0.4s" }} />
-            <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500/40 to-purple-600/40 border border-indigo-400/50 flex items-center justify-center shadow-xl shadow-indigo-500/30">
-              <svg className="w-7 h-7 text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="min-h-screen bg-[#060810] text-white font-sans antialiased overflow-hidden flex items-center justify-center">
+        <div className="text-center space-y-8 max-w-md mx-auto px-8">
+          <div className="relative w-32 h-32 mx-auto">
+            <div className="absolute inset-0 rounded-full bg-indigo-500/10 animate-ping" style={{ animationDuration: "2.6s", animationDelay: "0.4s" }} />
+            <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500/40 to-purple-600/40 border border-indigo-400/50 flex items-center justify-center shadow-xl shadow-indigo-500/30">
+              <svg className="w-14 h-14 text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
               </svg>
             </div>
@@ -234,10 +238,12 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-white/40 mb-8 leading-relaxed">
             Enable your microphone to start your AI-powered interview. The interviewer will greet you immediately.
           </p>
-          <button onClick={unlock} className="w-full py-4 rounded-2xl font-semibold text-sm shimmer-btn text-white shadow-xl shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200">
-            Allow Microphone &amp; Begin
+          <button
+            onClick={unlock}
+            className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl"
+          >
+            Enable Microphone
           </button>
-          <p className="mt-5 text-xs text-white/20">Interview duration: 10 minutes</p>
         </div>
       </div>
     );
@@ -252,6 +258,23 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
       )}
       {children}
     </>
+  );
+}
+
+function VideoConference({ name, isIntroductionPhase, setIsIntroductionPhase }: { 
+  name: string; 
+  isIntroductionPhase: boolean;
+  setIsIntroductionPhase: (value: boolean) => void;
+}) {
+  return (
+    <InterviewStage 
+      name={name} 
+      isIntroductionPhase={isIntroductionPhase}
+      setIsIntroductionPhase={setIsIntroductionPhase}
+      question={QUESTIONS[0]} // Default to first question
+      frozen={false}
+      onCanvasReady={() => {}}
+    />
   );
 }
 
@@ -1283,7 +1306,14 @@ function QuestionPanel({
   );
 }
 
-function InterviewStage({ name }: { name: string }) {
+function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, question, frozen, onCanvasReady }: { 
+  name: string; 
+  isIntroductionPhase: boolean;
+  setIsIntroductionPhase: (value: boolean) => void;
+  question: Question;
+  frozen: boolean;
+  onCanvasReady: (canvas: HTMLCanvasElement) => void;
+}) {
   const { localParticipant } = useLocalParticipant();
   const room = useRoomContext();
   const [ended, setEnded] = useState(false);
@@ -1363,6 +1393,11 @@ function InterviewStage({ name }: { name: string }) {
         const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
         const isFinal = seg.final ?? seg.isFinal ?? true;
         upsertTranscript(who, text, segId, isFinal);
+        
+        // Auto-transition when AI says the magic phrase
+        if (who === "ai" && isIntroductionPhase && text.toLowerCase().includes("move to the first question")) {
+          setIsIntroductionPhase(false);
+        }
       }
     };
 
@@ -1431,49 +1466,204 @@ function InterviewStage({ name }: { name: string }) {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {/* Gamification score */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/30">
-            <span className="text-xs text-cyan-300 font-semibold">SCORE</span>
-            <span className="text-xs font-bold text-cyan-100">0</span>
-          </div>
           <span className="text-xs text-white/30 hidden sm:block">{name}</span>
           <Timer minutes={10} onEnd={() => setEnded(true)} />
         </div>
       </header>
 
-      {/* Main grid with side-by-side avatars */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-2 p-2 overflow-hidden min-h-0" style={{ gridTemplateRows: "minmax(0, 1fr)" }}>
-
-        {/* Question + Canvas panel */}
-        <section className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
-            <div className="flex items-center gap-1">
-              {QUESTIONS.map((q, i) => (
-                <button
-                  key={q.id}
-                  onClick={() => setActiveQuestionIdx(i)}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-all ${
-                    activeQuestionIdx === i
-                      ? "bg-fuchsia-500/25 border border-fuchsia-400/50 text-fuchsia-200 shadow-sm shadow-fuchsia-500/30"
-                      : "bg-white/5 border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/10"
-                  }`}
-                >
-                  Q{q.id}
-                </button>
+      {/* Main content - Intro vs Question phase */}
+      {isIntroductionPhase ? (
+        // Introduction phase: stunning cosmic experience
+        <div className="relative flex-1 overflow-hidden">
+          {/* Animated cosmic background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950">
+            {/* Floating particles */}
+            <div className="absolute inset-0">
+              {[...Array(50)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
+                    animationDelay: `${Math.random() * 5}s`,
+                    animationDuration: `${3 + Math.random() * 4}s`,
+                    opacity: Math.random() * 0.8 + 0.2,
+                    boxShadow: '0 0 6px rgba(255,255,255,0.8)'
+                  }}
+                />
               ))}
             </div>
-            <span className="text-[10px] text-white/25 hidden sm:flex items-center gap-1.5">
-              <span className="w-1 h-1 rounded-full bg-fuchsia-400 animate-pulse" />
-              The AI sees what you see
-            </span>
+            
+            {/* Nebula clouds */}
+            <div className="absolute inset-0">
+              <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
+              <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-pink-600/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '12s', animationDelay: '4s' }} />
+            </div>
+            
+            {/* Animated grid lines */}
+            <svg className="absolute inset-0 w-full h-full opacity-20">
+              <defs>
+                <linearGradient id="grid" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.3" />
+                </linearGradient>
+              </defs>
+              <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="url(#grid)" strokeWidth="1" />
+              </pattern>
+              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+            </svg>
           </div>
-          <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
-            <QuestionPanel question={QUESTIONS[activeQuestionIdx]} frozen={ended} onCanvasReady={publishPlayground} />
-          </div>
-        </section>
 
-        {/* AI Panel with dual avatars */}
-        <aside className="flex flex-col gap-2 min-h-0 overflow-hidden">
+          {/* Central content */}
+          <div className="relative flex-1 flex flex-col items-center justify-center p-8">
+            {/* Glowing title */}
+            <div className="mb-12 text-center">
+              <h1 className="text-5xl md:text-7xl font-black bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-4 animate-pulse" style={{ animationDuration: '3s' }}>
+                AI Interview
+              </h1>
+              <p className="text-lg md:text-xl text-white/60 font-light tracking-wider">Gyan Vihar University</p>
+            </div>
+
+            {/* Avatar connection system */}
+            <div className="relative mb-12">
+              {/* Connection lines */}
+              <svg className="absolute inset-0 w-[400px] h-[200px] -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 pointer-events-none">
+                <defs>
+                  <linearGradient id="connection" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
+                    <stop offset="50%" stopColor="#8b5cf6" stopOpacity="0.6" />
+                    <stop offset="100%" stopColor="#ec4899" stopOpacity="0.8" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M 100 100 Q 200 50 300 100"
+                  stroke="url(#connection)"
+                  strokeWidth="2"
+                  fill="none"
+                  strokeDasharray="5 5"
+                  className="animate-pulse"
+                  style={{ animationDuration: '2s' }}
+                />
+                <circle cx="200" cy="75" r="3" fill="#8b5cf6" className="animate-ping" style={{ animationDuration: '2s' }} />
+              </svg>
+
+              {/* Avatar cards */}
+              <div className="grid grid-cols-2 gap-16 relative z-10">
+                {/* Human Avatar */}
+                <div className="relative group">
+                  {/* Glow effect */}
+                  <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s' }} />
+                  
+                  <div className="relative glass backdrop-blur-xl rounded-full p-8 border border-cyan-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:rotate-3 w-64 h-64 flex flex-col items-center justify-center">
+                    {/* Animated background */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/10 to-blue-600/10 animate-pulse" style={{ animationDuration: '3s' }} />
+                    
+                    {/* Speaking indicator */}
+                    {avatarState.human === "speaking" && !ended && (
+                      <div className="absolute top-4 right-4">
+                        <div className="w-4 h-4 bg-cyan-400 rounded-full animate-ping" />
+                        <div className="w-4 h-4 bg-cyan-400 rounded-full absolute top-0" />
+                      </div>
+                    )}
+                    
+                    <div className="relative z-10 flex flex-col items-center space-y-4">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl animate-pulse" style={{ animationDuration: '2s' }} />
+                        <HumanAvatar state={ended ? "ended" : avatarState.human} />
+                      </div>
+                      <div className="text-center">
+                        <h3 className="text-xl font-bold text-cyan-100 mb-1">{name}</h3>
+                        <p className="text-sm text-cyan-300/70 font-medium">
+                          {avatarState.human === "speaking" ? "🎤 Speaking" : "👂 Listening"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Avatar */}
+                <div className="relative group">
+                  {/* Glow effect */}
+                  <div className="absolute -inset-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s', animationDelay: '2s' }} />
+                  
+                  <div className="relative glass backdrop-blur-xl rounded-full p-8 border border-fuchsia-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:-rotate-3 w-64 h-64 flex flex-col items-center justify-center">
+                    {/* Animated background */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10 animate-pulse" style={{ animationDuration: '3s', animationDelay: '1s' }} />
+                    
+                    {/* Speaking indicator */}
+                    {avatarState.ai === "speaking" && !ended && (
+                      <div className="absolute top-4 right-4">
+                        <div className="w-4 h-4 bg-fuchsia-400 rounded-full animate-ping" />
+                        <div className="w-4 h-4 bg-fuchsia-400 rounded-full absolute top-0" />
+                      </div>
+                    )}
+                    
+                    <div className="relative z-10 flex flex-col items-center space-y-4">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-fuchsia-400/30 rounded-full blur-xl animate-pulse" style={{ animationDuration: '2s' }} />
+                        <AIAvatar state={ended ? "ended" : avatarState.ai} />
+                      </div>
+                      <div className="text-center">
+                        <h3 className="text-xl font-bold text-fuchsia-100 mb-1">AI Interviewer</h3>
+                        <p className="text-sm text-fuchsia-300/70 font-medium">
+                          {avatarState.ai === "speaking" ? "🎤 Speaking" : avatarState.ai === "thinking" ? "🤔 Thinking" : "👂 Listening"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Status message */}
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center space-x-2 px-6 py-3 rounded-full glass backdrop-blur-md border border-white/20">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                <span className="text-white/80 font-medium">Introduction Phase</span>
+              </div>
+              <p className="text-white/40 text-sm max-w-md mx-auto">
+                Getting to know each other before we begin the questions
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        // Question phase: normal layout
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-2 p-2 overflow-hidden min-h-0" style={{ gridTemplateRows: "minmax(0, 1fr)" }}>
+
+          {/* Question + Canvas panel */}
+          <section className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
+              <div className="flex items-center gap-1">
+                {QUESTIONS.map((q, i) => (
+                  <button
+                    key={q.id}
+                    onClick={() => setActiveQuestionIdx(i)}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-all ${
+                      activeQuestionIdx === i
+                        ? "bg-fuchsia-500/25 border border-fuchsia-400/50 text-fuchsia-200 shadow-sm shadow-fuchsia-500/30"
+                        : "bg-white/5 border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/10"
+                    }`}
+                  >
+                    Q{q.id}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[10px] text-white/25 hidden sm:flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-fuchsia-400 animate-pulse" />
+                The AI sees what you see
+              </span>
+            </div>
+            <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
+              <QuestionPanel question={question} frozen={frozen} onCanvasReady={onCanvasReady} />
+            </div>
+          </section>
+
+          {/* AI Panel with dual avatars */}
+          <aside className="flex flex-col gap-2 min-h-0 overflow-hidden">
 
           {/* Dual Avatar Cards */}
           <div className="grid grid-cols-2 gap-2 shrink-0">
@@ -1508,7 +1698,7 @@ function InterviewStage({ name }: { name: string }) {
               />
               <AIAvatar state={ended ? "ended" : avatarState.ai} />
               <div className="text-center space-y-0.5 relative z-10">
-                <p className="text-xs font-bold text-fuchsia-100">AI Interviewer</p>
+                <p className="text-xs font-bold text-fuchsia-100">AI</p>
                 <p className="text-[9px] font-medium text-fuchsia-300/70">
                   {avatarState.ai === "speaking" ? "Speaking..." : avatarState.ai === "thinking" ? "Thinking..." : "Idle"}
                 </p>
@@ -1519,21 +1709,25 @@ function InterviewStage({ name }: { name: string }) {
             </div>
           </div>
 
-          {/* Transcript with explicit max height so it scrolls instead of growing */}
-          <div className="glass rounded-2xl flex flex-col overflow-hidden flex-1 min-h-0 border border-white/8">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-fuchsia-400/60 animate-pulse" />
-                <span className="text-xs font-medium text-white/50">Live Transcript</span>
+          {/* Transcript - hidden during introduction */}
+          {!isIntroductionPhase && (
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-fuchsia-400/60 animate-pulse" />
+                    <span className="text-xs font-medium text-white/50">Live Transcript</span>
+                  </div>
+                  {transcript.length > 0 && (
+                    <span className="text-[10px] text-white/25 px-2 py-0.5 rounded-full bg-white/5 border border-white/8">
+                      {transcript.length}
+                    </span>
+                  )}
+                </div>
+                <TranscriptView entries={transcript} />
               </div>
-              {transcript.length > 0 && (
-                <span className="text-[10px] text-white/25 px-2 py-0.5 rounded-full bg-white/5 border border-white/8">
-                  {transcript.length}
-                </span>
-              )}
             </div>
-            <TranscriptView entries={transcript} />
-          </div>
+          )}
 
           {/* Ended card */}
           {ended && (
@@ -1544,7 +1738,8 @@ function InterviewStage({ name }: { name: string }) {
             </div>
           )}
         </aside>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

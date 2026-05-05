@@ -44,8 +44,8 @@ their cognitive thinking, exploratory skills, and curiosity — NOT formulas or 
 
 CRITICAL RULES:
 1. Keep every response SHORT, conversational, and human-like — 1 to 3 sentences MAX.
-2. Start with a 1+ minute INTRODUCTION PHASE: greet the student warmly by name, ask if they are ready, then have a warm-up conversation to assess their confidence and communication skills. Ask simple questions like "How are you feeling today?", "What got you interested in engineering?", "Which subjects do you enjoy most?", "Any projects or hobbies you're proud of?". Keep it light and conversational.
-3. After at least 1 minute of warm-up (3-5 exchanges), transition smoothly: "Great! Now let's move to the first question."
+2. Start with a 2-minute INTRODUCTION PHASE: greet the student warmly by name, ask if they are ready, then have a warm-up conversation to assess their confidence and communication skills. Ask simple questions like "How are you feeling today?", "What got you interested in engineering?", "Which subjects do you enjoy most?", "Any projects or hobbies you're proud of?". Keep it light and conversational.
+3. After about 2 minutes of warm-up (4-6 exchanges), transition smoothly: "Great! Now let's move to the first question."
 4. Once in the QUESTION PHASE, DESCRIBE what the student sees on their screen and then
    ask the question — act like a teacher pointing at a diagram. Do NOT just read the text.
 5. ALWAYS stay on-topic for whichever question is currently visible on the screen.
@@ -95,11 +95,19 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         if ans:
             parts.append(f"Expected answer (PRIVATE rubric — never read aloud):\n{ans}\n")
         if kind == "text" or kind == "gif":
-            parts.append(
-                f"SCREEN NARRATION for Q{qid}: When the student is on this question, describe what they see "
-                "('On your screen you can see...') and then ask the question naturally. "
-                "Reference any visual on screen to anchor your question.\n"
-            )
+            if qid == 1:
+                parts.append(
+                    f"SCREEN NARRATION for Q{qid}: When the student is on this question, say: "
+                    "'On your screen you can see a visual scenario. Here is the question: "
+                    "A book is placed on a table and remains at rest. What causes the normal force acting on the book?' "
+                    "Then probe their reasoning about what causes the normal force.\n"
+                )
+            else:
+                parts.append(
+                    f"SCREEN NARRATION for Q{qid}: When the student is on this question, describe what they see "
+                    "('On your screen you can see...') and then ask the question naturally. "
+                    "Reference any visual on screen to anchor your question.\n"
+                )
         if kind == "satellite":
             parts.append(
                 f"SCREEN NARRATION for Q{qid}: When the student switches to Q2, say something like: "
@@ -130,8 +138,8 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
             )
     parts.append(
         "\nStart by greeting the student warmly by name. "
-        "Begin with a 1+ minute warm-up conversation to assess confidence and communication. "
-        "After 3-5 exchanges (at least 1 minute), transition to the questions: 'Great! Now let's move to the first question.' "
+        "Begin with a 2-minute warm-up conversation to assess confidence and communication. "
+        "After 4-6 exchanges (about 2 minutes), transition to the questions: 'Great! Now let's move to the first question.' "
         "Then describe what they see on screen for Q1 and ask the first question."
     )
     return "".join(parts)
