@@ -21,5 +21,5 @@ COPY .env.example .env
 ENV PORT=8080
 EXPOSE 8080
 
-# Run the agent (production mode, not dev)
-CMD ["python", "agent.py"]
+# Run the agent in production mode
+CMD ["python", "agent.py", "start"]
