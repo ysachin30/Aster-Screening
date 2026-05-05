@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -17,8 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY agent.py .
 COPY .env.example .env
 
-# Expose health check port (Railway uses this)
-EXPOSE 7860
+# Expose health check port (Railway uses PORT env var)
+ENV PORT=8080
+EXPOSE 8080
 
-# Run the agent
-CMD ["python", "agent.py", "dev"]
+# Run the agent (production mode, not dev)
+CMD ["python", "agent.py"]
