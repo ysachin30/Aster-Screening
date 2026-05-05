@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 import { z } from "zod";
 
 export const tokenRouter = Router();
@@ -34,22 +34,28 @@ tokenRouter.post("/getToken", async (req, res) => {
 
   const token = await at.toJwt();
 
-  // Dispatch AI agent — skip if one already exists for this room
+  const httpUrl = (process.env.LIVEKIT_URL || "")
+    .replace(/^wss:\/\//, "https://")
+    .replace(/^ws:\/\//, "http://");
+
+  // 1. Pre-create the room so it exists when we dispatch
   try {
-    const dispatch = new AgentDispatchClient(
-      process.env.LIVEKIT_URL!,
-      apiKey!,
-      apiSecret!
-    );
-    const existing = await dispatch.listDispatch(room);
-    if (existing.length === 0) {
-      await dispatch.createDispatch(room, "", { metadata: JSON.stringify({ studentName: name, studentId: identity }) });
-      console.log("[dispatch] agent dispatched to room", room);
-    } else {
-      console.log("[dispatch] agent already dispatched to room", room, "— skipping");
-    }
+    const rooms = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+    await rooms.createRoom({ name: room, emptyTimeout: 900, maxParticipants: 10 });
+    console.log("[room] created:", room);
   } catch (e: any) {
-    console.warn("[dispatch] agent dispatch failed (non-fatal):", e?.message);
+    console.warn("[room] create warning (may already exist):", e?.message);
+  }
+
+  // 2. Dispatch agent — agent_name "" matches the Python worker registered with agent_name=""
+  try {
+    const dispatch = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
+    const result = await dispatch.createDispatch(room, "", {
+      metadata: JSON.stringify({ studentName: name, studentId: identity }),
+    });
+    console.log("[dispatch] ✓ dispatched — id:", result.id, "room:", room);
+  } catch (e: any) {
+    console.error("[dispatch] ✗ FAILED:", e?.message);
   }
 
   res.json({ token, room, identity });

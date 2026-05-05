@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   LiveKitRoom,
@@ -16,6 +16,21 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
 
 export default function InterviewPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 animate-fade-up">
+          <div className="w-12 h-12 rounded-full border-2 border-indigo-400/40 border-t-indigo-400 animate-spin" />
+          <p className="text-white/50 text-sm tracking-wide">Preparing your interview room…</p>
+        </div>
+      </main>
+    }>
+      <InterviewPageContent />
+    </Suspense>
+  );
+}
+
+function InterviewPageContent() {
   const params = useSearchParams();
   const room = params.get("room") || "";
   const name = params.get("name") || "Student";
@@ -172,7 +187,7 @@ function InterviewStage({ name }: { name: string }) {
   const pendingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const publishedRef = useRef(false);
   const remoteAudioSeenRef = useRef(false);
-  const fallbackGreetingSpokenRef = useRef(false);
+  const fallbackGreetingSpokenRef = useRef(false); // kept to avoid unused-var errors
 
   const doPublish = useCallback(async (canvas: HTMLCanvasElement) => {
     if (publishedRef.current) return;
@@ -207,28 +222,8 @@ function InterviewStage({ name }: { name: string }) {
     const onDisconnected = (reason?: any) => console.warn("[LK] Room DISCONNECTED reason:", reason);
     const onReconnecting = () => console.warn("[LK] Room RECONNECTING…");
     const onReconnected = () => console.log("[LK] Room RECONNECTED ✓");
-    const speakFallbackGreeting = () => {
-      if (fallbackGreetingSpokenRef.current || remoteAudioSeenRef.current) return;
-      fallbackGreetingSpokenRef.current = true;
-      const text =
-        `Hi ${name}! Welcome to your Gyan Vihar admissions screening. ` +
-        "I'm your AI interviewer today. I want to see how you think, not test formulas. Are you ready to begin?";
-      console.warn("[LK][FALLBACK] No LiveKit AI audio received yet — using browser speech greeting");
-      console.log(`[TRANSCRIPT] Interviewer(fallback): ${text}`);
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.95;
-        utterance.pitch = 1;
-        window.speechSynthesis.speak(utterance);
-      }
-    };
-
     const onParticipantConnected = (p: any) => {
       console.log("[LK] Participant joined:", p.identity, p.name);
-      if (String(p.identity).startsWith("agent-")) {
-        window.setTimeout(speakFallbackGreeting, 6000);
-      }
     };
     const onTrackSubscribed = (track: any, pub: any, p: any) => {
       console.log("[LK] Track subscribed  participant:", p.identity, "kind:", track.kind, "name:", track.name);
