@@ -4,16 +4,31 @@ import { z } from "zod";
 
 export const tokenRouter = Router();
 
+const QuestionSchema = z.object({
+  id: z.number(),
+  kind: z.string().optional(),
+  question: z.string(),
+  context: z.string().optional(),
+  hints: z.array(z.string()).optional(),
+  answer: z.string().optional(),
+});
+
 const Body = z.object({
   room: z.string().min(3),
   identity: z.string().min(1),
   name: z.string().min(1),
+  // New: full question list
+  questions: z.array(QuestionSchema).optional(),
+  // Legacy single-question fields (kept for backwards compat)
+  questionText: z.string().optional(),
+  questionContext: z.string().optional(),
+  questionHints: z.array(z.string()).optional(),
 });
 
 tokenRouter.post("/getToken", async (req, res) => {
   const parsed = Body.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { room, identity, name } = parsed.data;
+  const { room, identity, name, questions, questionText, questionContext, questionHints } = parsed.data;
 
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -55,7 +70,16 @@ tokenRouter.post("/getToken", async (req, res) => {
       console.log("[dispatch] Agent already dispatched for room:", room, "— skipping (count:", existing.length, ")");
     } else {
       const result = await dispatch.createDispatch(room, "", {
-        metadata: JSON.stringify({ studentName: name, studentId: identity }),
+        metadata: JSON.stringify({
+          studentName: name,
+          studentId: identity,
+          // New: full list of questions
+          questions: questions || [],
+          // Legacy single-question fields (kept for backwards compat)
+          questionText: questionText || "",
+          questionContext: questionContext || "",
+          questionHints: questionHints || [],
+        }),
       });
       console.log("[dispatch] ✓ dispatched — id:", result.id, "room:", room);
     }
