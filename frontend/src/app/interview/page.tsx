@@ -134,6 +134,8 @@ function InterviewPageContent() {
   const [token, setToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [isIntroductionPhase, setIsIntroductionPhase] = useState(true);
+  const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set());
+  const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
 
   useEffect(() => {
     if (!room) return;
@@ -200,6 +202,10 @@ function InterviewPageContent() {
           question={QUESTIONS[0]} // Default to first question
           frozen={false}
           onCanvasReady={() => {}}
+          answeredQuestions={answeredQuestions}
+          setActiveQuestionIdx={setActiveQuestionIdx}
+          setAnsweredQuestions={setAnsweredQuestions}
+          activeQuestionIdx={activeQuestionIdx}
         />
       </AudioUnlockGate>
     </LiveKitRoom>
@@ -274,6 +280,10 @@ function VideoConference({ name, isIntroductionPhase, setIsIntroductionPhase }: 
       question={QUESTIONS[0]} // Default to first question
       frozen={false}
       onCanvasReady={() => {}}
+      answeredQuestions={new Set()}
+      setActiveQuestionIdx={() => {}}
+      setAnsweredQuestions={() => {}}
+      activeQuestionIdx={0}
     />
   );
 }
@@ -483,10 +493,16 @@ function QuestionPanel({
   question,
   frozen,
   onCanvasReady,
+  answeredQuestions,
+  setActiveQuestionIdx,
+  setAnsweredQuestions,
 }: {
   question: Question;
   frozen: boolean;
   onCanvasReady: (canvas: HTMLCanvasElement) => void;
+  answeredQuestions: Set<number>;
+  setActiveQuestionIdx: (index: number) => void;
+  setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showContext, setShowContext] = useState(false);
@@ -498,6 +514,8 @@ function QuestionPanel({
   const [stroke, setStroke] = useState<{ x: number; y: number }[] | null>(null);
   // Q3: probe x-position in function space (for differentiability canvas)
   const [diffX, setDiffX] = useState(2.5);
+  // Submit state for Q2
+  const [submitTimer, setSubmitTimer] = useState<NodeJS.Timeout | null>(null);
   const draggingRef = useRef(false);
   const drawingRef = useRef(false);
 
@@ -506,6 +524,32 @@ function QuestionPanel({
     const canvas = canvasRef.current;
     if (canvas) onCanvasReady(canvas);
   }, [onCanvasReady]);
+
+  // Auto-submit timer for Q2 - reset on any interaction
+  useEffect(() => {
+    if (question.kind !== "satellite" || !stroke) return;
+    
+    // Clear existing timer
+    if (submitTimer) {
+      clearTimeout(submitTimer);
+    }
+    
+    // Set new timer for 3 seconds
+    const timer = setTimeout(() => {
+      // Auto-submit and move to next question
+      setAnsweredQuestions(prev => new Set(prev).add(question.id));
+      const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
+      if (nextIndex < QUESTIONS.length) {
+        setActiveQuestionIdx(nextIndex);
+      }
+    }, 3000);
+    
+    setSubmitTimer(timer);
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [stroke, question.id, question.kind]);
 
   // Redraw whenever relevant state changes
   useEffect(() => {
@@ -1289,30 +1333,51 @@ function QuestionPanel({
           💡 Hint {remainingHints > 0 ? `(${remainingHints})` : "done"}
         </button>
         {isSatellite && (
-          <button
-            onClick={toggleDrawMode}
-            disabled={frozen}
-            className={`flex-1 py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
-              drawMode
-                ? "bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/60 text-cyan-100 shadow-sm shadow-cyan-500/40"
-                : "bg-white/5 hover:bg-white/10 border-white/20 text-white/70"
-            }`}
-          >
-            {drawMode ? "✏️ Drawing mode — tap to drag" : "✏️ Draw trajectory"}
-          </button>
+          <>
+            <button
+              onClick={toggleDrawMode}
+              disabled={frozen}
+              className={`flex-1 py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
+                drawMode
+                  ? "bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/60 text-cyan-100 shadow-sm shadow-cyan-500/40"
+                  : "bg-white/5 hover:bg-white/10 border-white/20 text-white/70"
+              }`}
+            >
+              {drawMode ? "✏️ Drawing mode — tap to drag" : "✏️ Draw trajectory"}
+            </button>
+            <button
+              onClick={() => {
+                // Mark question as answered and move to next
+                setAnsweredQuestions(prev => new Set(prev).add(question.id));
+                // Auto-navigate to next question
+                const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
+                if (nextIndex < QUESTIONS.length) {
+                  setActiveQuestionIdx(nextIndex);
+                }
+              }}
+              disabled={frozen}
+              className="flex-1 py-2 rounded-xl text-[11px] font-semibold bg-green-500/20 hover:bg-green-500/30 border border-green-400/40 text-green-300 transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99]"
+            >
+              📤 Submit Answer
+            </button>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, question, frozen, onCanvasReady }: { 
+function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, question, frozen, onCanvasReady, answeredQuestions, setActiveQuestionIdx, setAnsweredQuestions, activeQuestionIdx }: { 
   name: string; 
   isIntroductionPhase: boolean;
   setIsIntroductionPhase: (value: boolean) => void;
   question: Question;
   frozen: boolean;
   onCanvasReady: (canvas: HTMLCanvasElement) => void;
+  answeredQuestions: Set<number>;
+  setActiveQuestionIdx: (index: number) => void;
+  setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
+  activeQuestionIdx: number;
 }) {
   const { localParticipant } = useLocalParticipant();
   const room = useRoomContext();
@@ -1325,7 +1390,6 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const publishedRef = useRef(false);
   const prevSpeakerRef = useRef<"none" | "ai" | "user">("none");
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
 
   const upsertTranscript = useCallback((who: "ai" | "user", text: string, segId: string, isFinal: boolean) => {
     if (!text.trim()) return;
@@ -1397,6 +1461,17 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         // Auto-transition when AI says the magic phrase
         if (who === "ai" && isIntroductionPhase && text.toLowerCase().includes("move to the first question")) {
           setIsIntroductionPhase(false);
+        }
+        
+        // Voice command detection for "submit" in Q2
+        if (who === "user" && !isIntroductionPhase && question.kind === "satellite" && 
+            text.toLowerCase().includes("submit")) {
+          // Mark question as answered and move to next
+          setAnsweredQuestions(prev => new Set(prev).add(question.id));
+          const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
+          if (nextIndex < QUESTIONS.length) {
+            setActiveQuestionIdx(nextIndex);
+          }
         }
       }
     };
@@ -1642,12 +1717,23 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                   <button
                     key={q.id}
                     onClick={() => setActiveQuestionIdx(i)}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-all ${
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-all flex items-center gap-1.5 ${
                       activeQuestionIdx === i
                         ? "bg-fuchsia-500/25 border border-fuchsia-400/50 text-fuchsia-200 shadow-sm shadow-fuchsia-500/30"
-                        : "bg-white/5 border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/10"
+                        : answeredQuestions.has(q.id)
+                          ? "bg-green-500/15 border border-green-400/40 text-green-300 hover:bg-green-500/25"
+                          : "bg-white/5 border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/10"
                     }`}
                   >
+                    {answeredQuestions.has(q.id) ? (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    )}
                     Q{q.id}
                   </button>
                 ))}
@@ -1658,7 +1744,14 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               </span>
             </div>
             <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
-              <QuestionPanel question={question} frozen={frozen} onCanvasReady={onCanvasReady} />
+              <QuestionPanel 
+                answeredQuestions={answeredQuestions} 
+                question={question} 
+                frozen={frozen} 
+                onCanvasReady={onCanvasReady}
+                setActiveQuestionIdx={setActiveQuestionIdx}
+                setAnsweredQuestions={setAnsweredQuestions}
+              />
             </div>
           </section>
 
