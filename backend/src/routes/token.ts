@@ -47,13 +47,18 @@ tokenRouter.post("/getToken", async (req, res) => {
     console.warn("[room] create warning (may already exist):", e?.message);
   }
 
-  // 2. Dispatch agent — agent_name "" matches the Python worker registered with agent_name=""
+  // 2. Dispatch agent only if one is not already assigned to this room
   try {
     const dispatch = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
-    const result = await dispatch.createDispatch(room, "", {
-      metadata: JSON.stringify({ studentName: name, studentId: identity }),
-    });
-    console.log("[dispatch] ✓ dispatched — id:", result.id, "room:", room);
+    const existing = await dispatch.listDispatch(room);
+    if (existing.length > 0) {
+      console.log("[dispatch] Agent already dispatched for room:", room, "— skipping (count:", existing.length, ")");
+    } else {
+      const result = await dispatch.createDispatch(room, "", {
+        metadata: JSON.stringify({ studentName: name, studentId: identity }),
+      });
+      console.log("[dispatch] ✓ dispatched — id:", result.id, "room:", room);
+    }
   } catch (e: any) {
     console.error("[dispatch] ✗ FAILED:", e?.message);
   }

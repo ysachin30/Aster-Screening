@@ -286,14 +286,24 @@ function InterviewStage({ name }: { name: string }) {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const transcriptIdRef = useRef(0);
+  const inProgressRef = useRef<Map<string, number>>(new Map());
   const pendingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const publishedRef = useRef(false);
   const prevSpeakerRef = useRef<"none" | "ai" | "user">("none");
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const addTranscript = useCallback((who: "ai" | "user", text: string) => {
+  const upsertTranscript = useCallback((who: "ai" | "user", text: string, segId: string, isFinal: boolean) => {
     if (!text.trim()) return;
-    setTranscript(prev => [...prev.slice(-60), { who, text: text.trim(), id: ++transcriptIdRef.current }]);
+    const existingEntryId = inProgressRef.current.get(segId);
+    if (existingEntryId !== undefined) {
+      setTranscript(prev => prev.map(e => e.id === existingEntryId ? { ...e, text: text.trim() } : e));
+      if (isFinal) inProgressRef.current.delete(segId);
+    } else {
+      const newId = ++transcriptIdRef.current;
+      inProgressRef.current.set(segId, newId);
+      setTranscript(prev => [...prev.slice(-60), { who, text: text.trim(), id: newId }]);
+      if (isFinal) inProgressRef.current.delete(segId);
+    }
   }, []);
 
   const doPublish = useCallback(async (canvas: HTMLCanvasElement) => {
@@ -345,7 +355,9 @@ function InterviewStage({ name }: { name: string }) {
         const text = seg.text ?? seg;
         if (!text) continue;
         const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
-        addTranscript(who, text);
+        const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
+        const isFinal = seg.final ?? seg.isFinal ?? true;
+        upsertTranscript(who, text, segId, isFinal);
       }
     };
 
@@ -354,9 +366,10 @@ function InterviewStage({ name }: { name: string }) {
         const json = JSON.parse(new TextDecoder().decode(payload));
         if (json.type === "transcript" || json.segment || json.text) {
           const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
-          addTranscript(who, json.text ?? json.segment?.text ?? "");
+          const text = json.text ?? json.segment?.text ?? "";
+          upsertTranscript(who, text, `data-${Date.now()}`, true);
         }
-      } catch {}
+      } catch {};
     };
 
     room.on("connectionStateChanged", onStateChange);
@@ -370,7 +383,7 @@ function InterviewStage({ name }: { name: string }) {
       room.off("transcriptionReceived", onTranscriptionReceived);
       room.off("dataReceived", onDataReceived);
     };
-  }, [room, doPublish, ended, addTranscript]);
+  }, [room, doPublish, ended, upsertTranscript]);
 
   useEffect(() => { if (ended) setAvatarState("ended"); }, [ended]);
 
