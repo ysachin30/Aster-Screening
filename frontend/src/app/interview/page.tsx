@@ -136,6 +136,7 @@ function InterviewPageContent() {
   const [isIntroductionPhase, setIsIntroductionPhase] = useState(true);
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set());
   const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
+  const [isFinished, setIsFinished] = useState(false);
 
   useEffect(() => {
     if (!room) return;
@@ -206,6 +207,8 @@ function InterviewPageContent() {
           setActiveQuestionIdx={setActiveQuestionIdx}
           setAnsweredQuestions={setAnsweredQuestions}
           activeQuestionIdx={activeQuestionIdx}
+          isFinished={isFinished}
+          setIsFinished={setIsFinished}
         />
       </AudioUnlockGate>
     </LiveKitRoom>
@@ -1358,7 +1361,7 @@ function QuestionPanel({
   );
 }
 
-function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, question, frozen, onCanvasReady, answeredQuestions, setActiveQuestionIdx, setAnsweredQuestions, activeQuestionIdx }: { 
+function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, question, frozen, onCanvasReady, answeredQuestions, setActiveQuestionIdx, setAnsweredQuestions, activeQuestionIdx, isFinished, setIsFinished }: { 
   name: string; 
   isIntroductionPhase: boolean;
   setIsIntroductionPhase: (value: boolean) => void;
@@ -1369,6 +1372,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   setActiveQuestionIdx: (index: number) => void;
   setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
   activeQuestionIdx: number;
+  isFinished: boolean;
+  setIsFinished: (v: boolean) => void;
 }) {
   const { localParticipant } = useLocalParticipant();
   const room = useRoomContext();
@@ -1447,7 +1452,10 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
         const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
         const isFinal = seg.final ?? seg.isFinal ?? true;
-        upsertTranscript(who, text, segId, isFinal);
+        // Only store transcript once question phase begins
+        if (!isIntroductionPhase) {
+          upsertTranscript(who, text, segId, isFinal);
+        }
         
         // Auto-transition when AI says the magic phrase
         if (who === "ai" && isIntroductionPhase && text.toLowerCase().includes("move to the first question")) {
@@ -1511,6 +1519,24 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     if (room.state === ConnectionState.Connected) doPublish(canvas);
   }, [room, doPublish]);
 
+  // Navigates to next question and notifies the AI agent about the new question
+  const navigateToNext = useCallback(() => {
+    const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
+    const nextIdx = currentIdx + 1;
+    if (nextIdx >= QUESTIONS.length) {
+      setIsFinished(true);
+      return;
+    }
+    setAnsweredQuestions(prev => new Set(prev).add(question.id));
+    setActiveQuestionIdx(nextIdx);
+    const nextQ = QUESTIONS[nextIdx];
+    // Publish data message to agent so it reads the new question aloud
+    try {
+      const msg = JSON.stringify({ type: "question_changed", questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
+      room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
+    } catch (e) { console.warn("[LK] publishData failed", e); }
+  }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished, room]);
+
   const stateLabel: Record<AvatarState, string> = {
     idle: "Waiting for you…", speaking: "Speaking…", listening: "Listening to you…",
     thinking: "Thinking…", ended: "Interview Complete",
@@ -1519,6 +1545,45 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     idle: "text-violet-300/60", speaking: "text-pink-400", listening: "text-cyan-300",
     thinking: "text-amber-300", ended: "text-white/30",
   };
+
+  // Thank You screen
+  if (isFinished) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center relative overflow-hidden bg-[#060810]">
+        <div className="pointer-events-none fixed inset-0 -z-10">
+          <div className="absolute top-[-5%] left-[5%] w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px] animate-float" />
+          <div className="absolute bottom-[-5%] right-[5%] w-[400px] h-[400px] rounded-full bg-cyan-500/10 blur-[100px] animate-float-delayed" />
+        </div>
+        <div className="text-center max-w-lg mx-auto px-8 space-y-8">
+          {/* Icon */}
+          <div className="relative w-28 h-28 mx-auto">
+            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/30 to-cyan-500/30 rounded-full blur-2xl animate-pulse" />
+            <div className="relative w-28 h-28 rounded-full bg-gradient-to-br from-fuchsia-600/40 to-cyan-600/40 border border-fuchsia-400/30 flex items-center justify-center">
+              <svg className="w-14 h-14 text-fuchsia-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+          {/* Text */}
+          <div className="space-y-3">
+            <h1 className="text-4xl font-black bg-gradient-to-r from-fuchsia-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
+              Thank You!
+            </h1>
+            <p className="text-white/70 text-lg font-medium">Your interview has been submitted successfully.</p>
+            <p className="text-white/40 text-sm leading-relaxed">
+              We appreciate you taking the time to complete this assessment.<br />
+              Our team will review your responses and get back to you soon.
+            </p>
+          </div>
+          {/* Branding */}
+          <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full glass border border-white/10">
+            <span className="text-sm">⚡</span>
+            <span className="text-white/50 text-xs font-medium tracking-wider">Aster Screening · Gyan Vihar University</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col relative overflow-hidden">
@@ -1706,13 +1771,6 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               <p className="text-white/40 text-sm max-w-md mx-auto">
                 Getting to know each other before we begin the questions
               </p>
-              {/* TEMPORARY: Skip button for testing */}
-              <button
-                onClick={() => setIsIntroductionPhase(false)}
-                className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-400/40 text-red-300 text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                ⏭️ Skip Introduction (Testing)
-              </button>
             </div>
           </div>
         </div>
@@ -1722,31 +1780,33 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
 
           {/* Question + Canvas panel */}
           <section className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
+            {/* Question tabs — display only, no student navigation */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
               <div className="flex items-center gap-1">
                 {QUESTIONS.map((q, i) => (
-                  <button
+                  <div
                     key={q.id}
-                    onClick={() => setActiveQuestionIdx(i)}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider transition-all flex items-center gap-1.5 ${
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider select-none flex items-center gap-1.5 ${
                       activeQuestionIdx === i
                         ? "bg-fuchsia-500/25 border border-fuchsia-400/50 text-fuchsia-200 shadow-sm shadow-fuchsia-500/30"
                         : answeredQuestions.has(q.id)
-                          ? "bg-green-500/15 border border-green-400/40 text-green-300 hover:bg-green-500/25"
-                          : "bg-white/5 border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/10"
+                          ? "bg-green-500/15 border border-green-400/40 text-green-300"
+                          : i > activeQuestionIdx
+                            ? "bg-white/3 border border-white/8 text-white/20 cursor-not-allowed"
+                            : "bg-white/5 border border-white/10 text-white/40"
                     }`}
                   >
                     {answeredQuestions.has(q.id) ? (
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
-                    ) : (
+                    ) : i > activeQuestionIdx ? (
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                       </svg>
-                    )}
+                    ) : null}
                     Q{q.id}
-                  </button>
+                  </div>
                 ))}
               </div>
               <span className="text-[10px] text-white/25 hidden sm:flex items-center gap-1.5">
@@ -1754,16 +1814,44 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                 The AI sees what you see
               </span>
             </div>
+
             <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
               <QuestionPanel 
                 answeredQuestions={answeredQuestions} 
                 question={question} 
                 frozen={frozen} 
-                onCanvasReady={onCanvasReady}
+                onCanvasReady={publishPlayground}
                 setActiveQuestionIdx={setActiveQuestionIdx}
                 setAnsweredQuestions={setAnsweredQuestions}
               />
             </div>
+
+            {/* Submit & Next / Finish button */}
+            {!frozen && (
+              <div className="px-3 pb-3 shrink-0">
+                {activeQuestionIdx < QUESTIONS.length - 1 ? (
+                  <button
+                    onClick={navigateToNext}
+                    className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 flex items-center justify-center gap-2"
+                  >
+                    Submit & Next
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsFinished(true)}
+                    className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
+                  >
+                    Finish Interview
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
           </section>
 
           {/* AI Panel with dual avatars */}

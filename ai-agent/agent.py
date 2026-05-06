@@ -110,15 +110,15 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
                 )
         if kind == "satellite":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: When the student switches to Q2, say something like: "
-                "'On your screen you can see Earth at the centre, a satellite orbiting it, and two arrows — "
-                "a magenta one labelled F_g pointing toward Earth, and a cyan one labelled v pointing along the orbit. "
-                "Now here's the question: what do you think would happen if that gravitational force suddenly became zero?' "
-                "The student can drag the satellite to different positions to explore. "
-                "They have a Draw trajectory button to sketch their answer, and a Submit button when done. "
-                "NO cross-questioning for this question - accept their submission and assess based on their drawing. "
-                "The correct answer: the satellite would fly off in a straight line tangent to the orbit (Newton's first law). "
-                "Listen for voice commands like 'submit' to move to the next question.\n"
+                f"SCREEN NARRATION for Q{qid}: When you arrive at Q2, immediately say something like: "
+                "'Great, now look at your screen. You can see Earth at the centre with a satellite orbiting it. "
+                "There are two arrows — a magenta one labelled F_g pointing toward Earth, and a cyan one labelled v pointing along the orbit. "
+                "Here is your question: what do you think would happen to the satellite if gravity suddenly became zero? "
+                "I want you to use the Draw Trajectory button on your screen — click it, then draw a line showing where you think the satellite would go. "
+                "Take your time, then click Submit Answer when you are done.' "
+                "Wait for the student to draw. Do NOT cross-question. "
+                "Once they submit (button or voice 'submit'), briefly acknowledge their drawing and assess how close their understanding is. "
+                "The correct answer: the satellite flies off in a straight line tangent to the orbit (Newton's first law of motion).\n"
             )
         if kind == "differentiability":
             parts.append(
@@ -237,6 +237,33 @@ async def entrypoint(ctx: JobContext):
         if text:
             transcript_lines.append(f"Interviewer: {text}")
             logger.info("📝 AI: %s", text)
+
+    # Listen for question_changed data messages from the frontend
+    @ctx.room.on("data_received")
+    def on_data(data_packet) -> None:
+        try:
+            payload = json.loads(data_packet.data.decode("utf-8"))
+            if payload.get("type") == "question_changed":
+                qid = payload.get("questionId")
+                kind = payload.get("kind", "")
+                qtext = payload.get("question", "")
+                logger.info("📨 question_changed received: Q%s (%s)", qid, kind)
+                draw_hint = " Ask the student to use the Draw Trajectory button and then click Submit Answer when done." if kind == "satellite" else ""
+                notice = (
+                    f"[SYSTEM] The student has moved to Question {qid}. "
+                    f"Immediately describe what they see on screen and ask: \"{qtext}\".{draw_hint}"
+                )
+                try:
+                    session.conversation.item.create(
+                        type="message",
+                        role="user",
+                        content=[{"type": "input_text", "text": notice}],
+                    )
+                    session.response.create()
+                except Exception as e:
+                    logger.warning("Could not inject question_changed notice: %s", e)
+        except Exception:
+            pass
 
     logger.info("Starting AgentSession…")
     await session.start(agent, room=ctx.room)
