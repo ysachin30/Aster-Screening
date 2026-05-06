@@ -1515,6 +1515,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     if (room.state === ConnectionState.Connected) doPublish(canvas);
   }, [room, doPublish]);
 
+  // Clear chat when moving to a new question
+  useEffect(() => {
+    setTranscript([]);
+    transcriptIdRef.current = 0;
+    inProgressRef.current.clear();
+  }, [activeQuestionIdx]);
+
   // Navigates to next question and notifies the AI agent about the new question
   const navigateToNext = useCallback(() => {
     const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
@@ -1523,14 +1530,16 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       setIsFinished(true);
       return;
     }
-    setAnsweredQuestions(prev => new Set(prev).add(question.id));
-    setActiveQuestionIdx(nextIdx);
     const nextQ = QUESTIONS[nextIdx];
     // Publish data message to agent so it reads the new question aloud
     try {
       const msg = JSON.stringify({ type: "question_changed", questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
       room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
+      console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind });
     } catch (e) { console.warn("[LK] publishData failed", e); }
+
+    setAnsweredQuestions(prev => new Set(prev).add(question.id));
+    setActiveQuestionIdx(nextIdx);
   }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished, room]);
 
   const stateLabel: Record<AvatarState, string> = {

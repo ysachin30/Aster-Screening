@@ -208,6 +208,8 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_ALL)
     logger.info("✓ Connected to room: %s", ctx.room.name)
 
+    loop = asyncio.get_running_loop()
+
     instructions = build_instructions(student_name, questions)
 
     # Gemini Multimodal Live model — audio in, audio out
@@ -239,33 +241,7 @@ async def entrypoint(ctx: JobContext):
             transcript_lines.append(f"Interviewer: {text}")
             logger.info("📝 AI: %s", text)
 
-    # Listen for question_changed data messages from the frontend
-    @ctx.room.on("data_received")
-    def on_data(*args, **kwargs) -> None:
-        """LiveKit callback signatures differ across SDK versions.
-        We defensively accept any signature and try to parse the first bytes-like payload.
-        """
-        raw = None
-        for a in args:
-            if isinstance(a, (bytes, bytearray)):
-                raw = bytes(a)
-                break
-            if hasattr(a, "data"):
-                try:
-                    raw = bytes(a.data)
-                    break
-                except Exception:
-                    pass
-        if raw is None:
-            return
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except Exception:
-            return
-
-        if payload.get("type") != "question_changed":
-            return
-
+    async def _handle_question_changed(payload: dict) -> None:
         qid = payload.get("questionId")
         kind = payload.get("kind", "")
         qtext = payload.get("question", "")
@@ -290,6 +266,43 @@ async def entrypoint(ctx: JobContext):
             session.response.create()
         except Exception as e:
             logger.warning("Could not inject question_changed notice: %s", e)
+
+    # Listen for question_changed data messages from the frontend
+    @ctx.room.on("data_received")
+    def on_data(*args, **kwargs) -> None:
+        """LiveKit callback signatures differ across SDK versions.
+        We defensively accept any signature and try to parse the first bytes-like payload.
+        IMPORTANT: schedule work onto the asyncio loop thread to avoid callback-thread latency.
+        """
+        raw = None
+        for a in args:
+            if isinstance(a, (bytes, bytearray)):
+                raw = bytes(a)
+                break
+            if hasattr(a, "data"):
+                try:
+                    raw = bytes(a.data)
+                    break
+                except Exception:
+                    pass
+        if raw is None:
+            return
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception:
+            return
+
+        if payload.get("type") != "question_changed":
+            return
+
+        def _schedule() -> None:
+            asyncio.create_task(_handle_question_changed(payload))
+
+        try:
+            loop.call_soon_threadsafe(_schedule)
+        except Exception:
+            # Fallback if already on loop thread
+            _schedule()
 
     logger.info("Starting AgentSession…")
     await session.start(agent, room=ctx.room)
