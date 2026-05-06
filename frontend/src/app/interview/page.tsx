@@ -1499,7 +1499,16 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       room.off("transcriptionReceived", onTranscriptionReceived);
       room.off("dataReceived", onDataReceived);
     };
-  }, [room, doPublish, ended, upsertTranscript]);
+  }, [
+    room,
+    doPublish,
+    ended,
+    upsertTranscript,
+    isIntroductionPhase,
+    question.id,
+    question.kind,
+    q2Part,
+  ]);
 
   useEffect(() => { if (ended) setAvatarState({ ai: "ended", human: "ended" }); }, [ended]);
 
@@ -1825,6 +1834,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                 onCanvasReady={publishPlayground}
                 setActiveQuestionIdx={setActiveQuestionIdx}
                 setAnsweredQuestions={setAnsweredQuestions}
+                q2Part={q2Part}
+                setQ2Part={setQ2Part}
               />
             </div>
 
