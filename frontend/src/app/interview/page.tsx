@@ -1181,7 +1181,7 @@ function QuestionPanel({
   const isQ2 = question.id === 2;
   const part = q2Part ?? 1;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
-  const hidePresetVectors = isQ2 && part === 1;
+  const hidePresetVectors = isQ2;
 
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
