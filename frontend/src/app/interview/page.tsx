@@ -199,7 +199,7 @@ function InterviewPageContent() {
           name={name} 
           isIntroductionPhase={isIntroductionPhase}
           setIsIntroductionPhase={setIsIntroductionPhase}
-          question={QUESTIONS[0]} // Default to first question
+          question={QUESTIONS[activeQuestionIdx]}
           frozen={false}
           onCanvasReady={() => {}}
           answeredQuestions={answeredQuestions}
@@ -272,20 +272,7 @@ function VideoConference({ name, isIntroductionPhase, setIsIntroductionPhase }: 
   isIntroductionPhase: boolean;
   setIsIntroductionPhase: (value: boolean) => void;
 }) {
-  return (
-    <InterviewStage 
-      name={name} 
-      isIntroductionPhase={isIntroductionPhase}
-      setIsIntroductionPhase={setIsIntroductionPhase}
-      question={QUESTIONS[0]} // Default to first question
-      frozen={false}
-      onCanvasReady={() => {}}
-      answeredQuestions={new Set()}
-      setActiveQuestionIdx={() => {}}
-      setAnsweredQuestions={() => {}}
-      activeQuestionIdx={0}
-    />
-  );
+  return null;
 }
 
 function AIAvatar({ state }: { state: AvatarState }) {
