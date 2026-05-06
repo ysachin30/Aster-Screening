@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient, RoomServiceClient, DataPacket_Kind } from "livekit-server-sdk";
 import { z } from "zod";
 
 export const tokenRouter = Router();
@@ -18,11 +18,10 @@ tokenRouter.post("/question-changed", async (req, res) => {
   if (!room || !payload) return res.status(400).json({ error: "room and payload required" });
 
   try {
-    // Use dispatch client to send data to the agent participant directly
-    const dispatch = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
-    // Agent participants are named with agent- prefix; broadcast via room data is not reliable
-    // So we'll use a simpler approach: return success and let frontend handle publishData
-    console.log("[relay] question_changed received for room:", room, payload);
+    const client = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+    // Send data to all participants in the room (agent will receive via data_received)
+    await client.sendData(room, new TextEncoder().encode(JSON.stringify(payload)), DataPacket_Kind.RELIABLE);
+    console.log("[relay] question_changed sent to room:", room, payload);
     res.json({ ok: true });
   } catch (e: any) {
     console.error("[relay] failed:", e?.message);

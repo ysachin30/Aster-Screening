@@ -59,18 +59,23 @@ const QUESTIONS: Question[] = [
   {
     id: 2,
     kind: "satellite",
-    question: "What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?",
+    question:
+      "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.\n\n"
+      + "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?\n\n"
+      + "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?",
     context:
-      "In orbital mechanics, a satellite moves in a circular orbit when gravity provides the necessary centripetal force. If gravity disappears, the satellite continues with its instantaneous velocity.\n"
-      + "Newton's first law: an object in motion stays in motion at constant velocity unless acted upon by a net force.\n"
-      + "Without gravity, there is no centripetal force, so the satellite will fly off in a straight line tangent to the orbit.\n"
-      + "The cyan arrow shows the instantaneous velocity direction (tangent to the circular path).",
+      "What is a satellite?\n"
+      + "A satellite is an object that moves around a larger celestial body due to gravity.\n"
+      + "Example: the Moon around Earth, or an artificial satellite around Earth.",
     hints: [
-      "Think about what happens when you swing a ball on a string and the string breaks.",
-      "Which way does the ball fly off?",
+      "Part 1: Draw the gravitational force (g) pointing toward Earth, and the velocity (v) perpendicular to it.",
+      "Part 2: If v becomes zero, which direction would the satellite move?",
+      "Part 3: If gravity becomes zero, which direction would the satellite move?",
     ],
     answer:
-      "If gravity suddenly becomes zero, the satellite will fly off in a straight line tangent to its circular orbit at the point where gravity disappeared. This follows Newton's first law: without the centripetal force from gravity, the satellite continues with its instantaneous velocity (shown by the cyan arrow) in a straight line.",
+      "Part 1: In a stable orbit, gravity points inward toward the central body (radially inward) and provides centripetal acceleration. The satellite's velocity is tangential (perpendicular to gravity).\n\n"
+      + "Part 2: If forward velocity suddenly becomes zero, only gravity acts, so the satellite would move straight toward the central body (along the g axis) and fall inward.\n\n"
+      + "Part 3: If gravity suddenly becomes zero, there is no inward force, so the satellite continues in a straight line along its instantaneous velocity direction (along the v axis), tangent to the orbit.",
   },
   {
     id: 3,
@@ -1467,11 +1472,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
             setActiveQuestionIdx(nextIdx);
             const nextQ = QUESTIONS[nextIdx];
             const payload = { type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints };
-            fetch(`${BACKEND}/api/question-changed`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ room, payload }),
-            }).catch((e) => console.warn("[relay] failed", e));
+            setTimeout(() => {
+              try {
+                room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+              } catch (e) { console.warn("[LK] publishData failed", e); }
+            }, 2000);
           } else {
             setIsFinished(true);
           }
@@ -1528,13 +1533,14 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       return;
     }
     const nextQ = QUESTIONS[nextIdx];
-    // Use backend relay to ensure reliable delivery to agent
+    // Publish data message to agent so it reads the new question aloud
     const payload = { type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints };
-    fetch(`${BACKEND}/api/question-changed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room, payload }),
-    }).catch((e) => console.warn("[relay] failed", e));
+    setTimeout(() => {
+      try {
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+        console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind, code: nextIdx });
+      } catch (e) { console.warn("[LK] publishData failed", e); }
+    }, 2000);
 
     setAnsweredQuestions(prev => new Set(prev).add(question.id));
     setActiveQuestionIdx(nextIdx);
@@ -1846,11 +1852,12 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                   <button
                     onClick={() => {
                       const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
-                      fetch(`${BACKEND}/api/question-changed`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ room, payload }),
-                      }).catch((e) => console.warn("[relay] failed", e));
+                      setTimeout(() => {
+                        try {
+                          room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+                          console.log("[LK] finish published");
+                        } catch (e) { console.warn("[LK] publishData failed", e); }
+                      }, 2000);
                       setIsFinished(true);
                     }}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"

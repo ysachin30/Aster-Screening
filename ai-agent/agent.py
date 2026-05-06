@@ -112,12 +112,13 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
                 )
         if kind == "satellite":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: When you arrive at Q2, immediately say: "
-                "'What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?' "
-                "Then instruct: 'Draw a line towards the direction you feel it will go.' "
-                "Wait for the student to draw. Do NOT cross-question. "
-                "Once they submit (button or voice 'submit'), briefly acknowledge their drawing and assess how close their understanding is. "
-                "The correct answer: the satellite flies off in a straight line tangent to the orbit (Newton's first law of motion).\n"
+                f"SCREEN NARRATION for Q{qid}: When you arrive at Q2, speak calmly and read the 3 parts exactly as shown on screen. "
+                "Then guide the drawing in three steps: "
+                "(1) 'Part 1: Please draw the gravitational force g as a vertical line pointing toward Earth, and draw the velocity v at 90 degrees to g, pointing left.' "
+                "(2) 'Part 2: Now imagine the forward velocity suddenly becomes zero. Draw the path along the g axis.' "
+                "(3) 'Part 3: Now imagine gravity suddenly becomes zero. Draw the path along the v axis.' "
+                "Do NOT reveal the correct answer. Do NOT add extra explanation. "
+                "Wait for the student to draw and then ask them to click Submit & Next (or say 'submit').\n"
             )
         if kind == "differentiability":
             parts.append(
