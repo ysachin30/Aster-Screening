@@ -226,6 +226,7 @@ async def entrypoint(ctx: JobContext):
 
     transcript_lines: list[str] = []
     last_code: dict[str, object] = {"value": None}
+    last_part: dict[str, object] = {"value": None}
 
     @session.on("user_speech_committed")
     def on_user_speech(ev) -> None:
@@ -249,14 +250,21 @@ async def entrypoint(ctx: JobContext):
         qctx = payload.get("context", "") or ""
         qhints = payload.get("hints") or []
         finish = bool(payload.get("finish"))
-        logger.info("📨 question_changed received: code=%s Q%s (%s) finish=%s", code, qid, kind, finish)
+        part = payload.get("part")
+        logger.info("📨 question_changed received: code=%s Q%s (%s) part=%s finish=%s", code, qid, kind, part, finish)
 
-        # Drop duplicates (common when frontend retries)
-        if code is not None and last_code.get("value") == code and not finish:
-            logger.info("↺ duplicate code=%s ignored", code)
+        # Drop duplicates (common when frontend retries). For Q2, treat each part as distinct.
+        if (
+            code is not None
+            and last_code.get("value") == code
+            and (qid != 2 or last_part.get("value") == part)
+            and not finish
+        ):
+            logger.info("↺ duplicate code=%s part=%s ignored", code, part)
             return
         if code is not None:
             last_code["value"] = code
+            last_part["value"] = part
 
         if finish:
             notice = "[SYSTEM] The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
@@ -284,10 +292,11 @@ async def entrypoint(ctx: JobContext):
         except Exception:
             hints_line = ""
 
+        q_label = f"Question {qid}" + (f", Part {part}" if part is not None else "")
         notice = (
-            f"[SYSTEM] HARD OVERRIDE: The UI is now showing Question {qid} (code={code}, kind={kind}). "
+            f"[SYSTEM] HARD OVERRIDE: The UI is now showing {q_label} (code={code}, kind={kind}). "
             "You must START SPEAKING IMMEDIATELY without asking for confirmation. "
-            "First say: 'This is question " + str(qid) + ".' "
+            "First say: 'This is " + q_label.lower() + ".' "
             "Then read the QUESTION TEXT BELOW VERBATIM, then ask the student for their answer. "
             "After the student answers, do at most 2 short follow-up questions (except satellite: no cross-question), "
             "then instruct them to click Submit & Next. "

@@ -32,6 +32,15 @@ type Question = {
   answer: string;
 };
 
+const Q2_PART_1 = "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.";
+const Q2_PART_2 = "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?";
+const Q2_PART_3 = "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?";
+const getQ2PartText = (part: number) => {
+  if (part === 1) return Q2_PART_1;
+  if (part === 2) return Q2_PART_2;
+  return Q2_PART_3;
+};
+
 const QUESTIONS: Question[] = [
   {
     id: 1,
@@ -507,6 +516,8 @@ function QuestionPanel({
   answeredQuestions,
   setActiveQuestionIdx,
   setAnsweredQuestions,
+  q2Part,
+  setQ2Part,
 }: {
   question: Question;
   frozen: boolean;
@@ -514,6 +525,8 @@ function QuestionPanel({
   answeredQuestions: Set<number>;
   setActiveQuestionIdx: (index: number) => void;
   setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
+  q2Part?: number;
+  setQ2Part?: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showContext, setShowContext] = useState(false);
@@ -521,8 +534,8 @@ function QuestionPanel({
   // Satellite state (used only when question.kind === "satellite")
   const [satAngle, setSatAngle] = useState(Math.PI / 2); // start at bottom of orbit (opposite position)
   const [drawMode, setDrawMode] = useState(false);
-  // Single stroke — starting a new one always replaces the previous
-  const [stroke, setStroke] = useState<{ x: number; y: number }[] | null>(null);
+  // Multiple strokes (needed for Q2 Part 1: draw g and v separately)
+  const [strokes, setStrokes] = useState<{ x: number; y: number }[][]>([]);
   // Q3: probe x-position in function space (for differentiability canvas)
   const [diffX, setDiffX] = useState(2.5);
   const draggingRef = useRef(false);
@@ -737,8 +750,8 @@ function QuestionPanel({
       const tx = -Math.sin(satAngle); // tangential unit vector (CCW)
       const ty = Math.cos(satAngle);
 
-      // ── USER STROKE — single stroke with neon glow ──
-      if (stroke && stroke.length >= 2) {
+      // ── USER STROKES — multiple strokes with neon glow ──
+      for (const stroke of strokes) {
         ctx.save();
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
@@ -1158,7 +1171,7 @@ function QuestionPanel({
         y += 4;
       }
     }
-  }, [question, hintsRevealed, satAngle, drawMode, stroke, diffX]);
+  }, [question, hintsRevealed, satAngle, drawMode, strokes, diffX]);
 
   // Convert a pointer event to canvas-space coords
   const pointerToCanvas = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1177,8 +1190,7 @@ function QuestionPanel({
     if (question.kind === "satellite") {
       if (drawMode) {
         drawingRef.current = true;
-        // Replace any previous stroke — only one stroke at a time
-        setStroke([p]);
+        setStrokes(prev => [...prev, [p]]);
       } else {
         draggingRef.current = true;
         const canvas = canvasRef.current!;
@@ -1198,7 +1210,12 @@ function QuestionPanel({
     const p = pointerToCanvas(e);
     if (question.kind === "satellite") {
       if (drawingRef.current) {
-        setStroke(prev => prev ? [...prev, p] : [p]);
+        setStrokes(prev => {
+          if (prev.length === 0) return [[p]];
+          const next = [...prev];
+          next[next.length - 1] = [...next[next.length - 1], p];
+          return next;
+        });
       } else if (draggingRef.current) {
         const canvas = canvasRef.current!;
         setSatAngle(Math.atan2(p.y - canvas.height / 2, p.x - canvas.width / 2));
@@ -1216,13 +1233,16 @@ function QuestionPanel({
     drawingRef.current = false;
   };
 
-  const clearStroke = () => setStroke(null);
+  const clearStroke = () => setStrokes([]);
   const toggleDrawMode = () => setDrawMode(d => !d);
 
   const remainingHints = question.hints.length - hintsRevealed;
   const isSatellite = question.kind === "satellite";
   const isDiff = question.kind === "differentiability";
   const isInteractive = isSatellite || isDiff;
+  const isQ2 = question.id === 2;
+  const part = q2Part ?? 1;
+  const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
 
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
@@ -1238,7 +1258,7 @@ function QuestionPanel({
                 {question.kind === "differentiability" ? "Mathematics" : "Physics"}
               </span>
             </div>
-            <h3 className="text-sm font-bold text-white leading-snug">{question.question}</h3>
+            <h3 className="text-sm font-bold text-white leading-snug whitespace-pre-line">{displayedQuestion}</h3>
           </div>
           <button
             onClick={() => setShowContext(!showContext)}
@@ -1275,7 +1295,7 @@ function QuestionPanel({
         />
 
         {/* Floating Erase button when satellite + has a stroke */}
-        {isSatellite && stroke !== null && (
+        {isSatellite && strokes.length > 0 && (
           <button
             onClick={clearStroke}
             disabled={frozen}
@@ -1345,6 +1365,23 @@ function QuestionPanel({
           </button>
         )}
       </div>
+
+      {/* Q2 part navigation */}
+      {isSatellite && isQ2 && typeof setQ2Part === "function" && part < 3 && (
+        <button
+          onClick={() => {
+            clearStroke();
+            setHintsRevealed(0);
+            setShowContext(false);
+            setDrawMode(false);
+            setQ2Part(p => Math.min(3, p + 1));
+          }}
+          disabled={frozen}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20"
+        >
+          Next Part
+        </button>
+      )}
     </div>
   );
 }
@@ -1374,6 +1411,31 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const publishedRef = useRef(false);
   const prevSpeakerRef = useRef<"none" | "ai" | "user">("none");
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [q2Part, setQ2Part] = useState(1);
+
+  useEffect(() => {
+    if (question.id !== 2) setQ2Part(1);
+  }, [question.id]);
+
+  const publishQuestionChanged = useCallback((nextIdx: number, nextQ: Question, extra?: Record<string, unknown>) => {
+    const payload = {
+      type: "question_changed",
+      code: nextIdx,
+      questionId: nextQ.id,
+      question: nextQ.id === 2 ? getQ2PartText((extra?.part as number) || 1) : nextQ.question,
+      kind: nextQ.kind,
+      context: nextQ.context,
+      hints: nextQ.hints,
+      ...(extra || {}),
+    };
+    setTimeout(() => {
+      try {
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+        console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind, code: nextIdx, part: (extra as any)?.part });
+      } catch (e) { console.warn("[LK] publishData failed", e); }
+    }, 2000);
+  }, [room.localParticipant]);
 
   const upsertTranscript = useCallback((who: "ai" | "user", text: string, segId: string, isFinal: boolean) => {
     if (!text.trim()) return;
@@ -1461,25 +1523,15 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           }
         }
         
-        // Voice command detection for "submit" in Q2
-        if (who === "user" && !isIntroductionPhase && question.kind === "satellite" && 
-            text.toLowerCase().includes("submit")) {
+        // Voice command detection for "submit" / "next" in Q2
+        if (who === "user" && !isIntroductionPhase && question.id === 2 && question.kind === "satellite" && 
+            (text.toLowerCase().includes("submit") || text.toLowerCase().includes("next"))) {
           console.log("[Q2] Voice command 'submit' detected, navigating to next question");
-          const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
-          const nextIdx = currentIdx + 1;
-          if (nextIdx < QUESTIONS.length) {
-            setAnsweredQuestions(prev => new Set(prev).add(question.id));
-            setActiveQuestionIdx(nextIdx);
-            const nextQ = QUESTIONS[nextIdx];
-            const payload = { type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints };
-            setTimeout(() => {
-              try {
-                room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
-              } catch (e) { console.warn("[LK] publishData failed", e); }
-            }, 2000);
-          } else {
-            setIsFinished(true);
+          if (q2Part < 3) {
+            setQ2Part(p => Math.min(3, p + 1));
+            return;
           }
+          navigateToNext();
         }
       }
     };
@@ -1534,17 +1586,19 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     }
     const nextQ = QUESTIONS[nextIdx];
     // Publish data message to agent so it reads the new question aloud
-    const payload = { type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints };
-    setTimeout(() => {
-      try {
-        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
-        console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind, code: nextIdx });
-      } catch (e) { console.warn("[LK] publishData failed", e); }
-    }, 2000);
+    publishQuestionChanged(nextIdx, nextQ, nextQ.id === 2 ? { part: 1 } : undefined);
 
     setAnsweredQuestions(prev => new Set(prev).add(question.id));
     setActiveQuestionIdx(nextIdx);
-  }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished, room]);
+  }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished, publishQuestionChanged]);
+
+  useEffect(() => {
+    if (isIntroductionPhase) return;
+    if (question.id !== 2) return;
+    const idx = QUESTIONS.findIndex(q => q.id === question.id);
+    if (idx < 0) return;
+    publishQuestionChanged(idx, question, { part: q2Part });
+  }, [q2Part, question, isIntroductionPhase, publishQuestionChanged]);
 
   const stateLabel: Record<AvatarState, string> = {
     idle: "Waiting for you…", speaking: "Speaking…", listening: "Listening to you…",
@@ -1840,10 +1894,14 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               <div className="px-3 pb-3 shrink-0">
                 {activeQuestionIdx < QUESTIONS.length - 1 ? (
                   <button
-                    onClick={navigateToNext}
+                    onClick={() => {
+                      if (question.id === 2 && q2Part < 3) return;
+                      navigateToNext();
+                    }}
+                    disabled={question.id === 2 && q2Part < 3}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 flex items-center justify-center gap-2"
                   >
-                    Submit & Next
+                    {question.id === 2 && q2Part < 3 ? `Complete Part ${q2Part} (Next Part below)` : "Submit & Next"}
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                     </svg>
