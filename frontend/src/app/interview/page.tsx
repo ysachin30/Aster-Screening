@@ -13,7 +13,7 @@ import Timer from "@/components/Timer";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
-const GIF_URL = encodeURI("/Scared Role Playing GIF by Hyper RPG.gif");
+const GIF_URL = encodeURI("/q1.gif");
 
 type AvatarState = "idle" | "speaking" | "listening" | "thinking" | "ended";
 
