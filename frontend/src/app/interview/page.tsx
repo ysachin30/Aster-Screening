@@ -1533,7 +1533,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     const nextQ = QUESTIONS[nextIdx];
     // Publish data message to agent so it reads the new question aloud
     try {
-      const msg = JSON.stringify({ type: "question_changed", questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
+      const msg = JSON.stringify({ type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
       room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
       console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind });
     } catch (e) { console.warn("[LK] publishData failed", e); }
@@ -1846,7 +1846,14 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                   </button>
                 ) : (
                   <button
-                    onClick={() => setIsFinished(true)}
+                    onClick={() => {
+                      try {
+                        const msg = JSON.stringify({ type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true });
+                        room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
+                        console.log("[LK] finish published");
+                      } catch (e) { console.warn("[LK] publishData failed", e); }
+                      setIsFinished(true);
+                    }}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
                   >
                     Finish Interview

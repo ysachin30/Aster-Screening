@@ -242,10 +242,25 @@ async def entrypoint(ctx: JobContext):
             logger.info("📝 AI: %s", text)
 
     async def _handle_question_changed(payload: dict) -> None:
+        code = payload.get("code")
         qid = payload.get("questionId")
         kind = payload.get("kind", "")
         qtext = payload.get("question", "")
-        logger.info("📨 question_changed received: Q%s (%s)", qid, kind)
+        finish = bool(payload.get("finish"))
+        logger.info("📨 question_changed received: code=%s Q%s (%s) finish=%s", code, qid, kind, finish)
+
+        if finish:
+            notice = "[SYSTEM] The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
+            try:
+                session.conversation.item.create(
+                    type="message",
+                    role="user",
+                    content=[{"type": "input_text", "text": notice}],
+                )
+                session.response.create()
+            except Exception as e:
+                logger.warning("Could not inject finish notice: %s", e)
+            return
 
         draw_hint = (
             " Then instruct them: click Draw Trajectory, draw the path, and when ready click Submit & Next."
