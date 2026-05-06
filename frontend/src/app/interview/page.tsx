@@ -529,6 +529,8 @@ function QuestionPanel({
   useEffect(() => {
     if (question.kind !== "satellite" || !stroke) return;
     
+    console.log("[Q2] Starting auto-submit timer for stroke:", stroke.length, "points");
+    
     // Clear existing timer
     if (submitTimer) {
       clearTimeout(submitTimer);
@@ -536,7 +538,8 @@ function QuestionPanel({
     
     // Set new timer for 3 seconds
     const timer = setTimeout(() => {
-      // Auto-submit and move to next question
+      console.log("[Q2] Auto-submitting and navigating to next question");
+      // Mark question as answered and move to next
       setAnsweredQuestions(prev => new Set(prev).add(question.id));
       const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
       if (nextIndex < QUESTIONS.length) {
@@ -1347,6 +1350,7 @@ function QuestionPanel({
             </button>
             <button
               onClick={() => {
+                console.log("[Q2] Submit button clicked, navigating to next question");
                 // Mark question as answered and move to next
                 setAnsweredQuestions(prev => new Set(prev).add(question.id));
                 // Auto-navigate to next question
@@ -1463,9 +1467,22 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           setIsIntroductionPhase(false);
         }
         
+        // Auto-navigate to next question when AI says "move to the next question"
+        if (who === "ai" && !isIntroductionPhase && text.toLowerCase().includes("move to the next question")) {
+          console.log("[Navigation] AI said 'move to the next question', navigating from Q" + question.id + " to Q" + (question.id + 1));
+          // Mark current question as answered
+          setAnsweredQuestions(prev => new Set(prev).add(question.id));
+          // Navigate to next question
+          const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
+          if (nextIndex < QUESTIONS.length) {
+            setActiveQuestionIdx(nextIndex);
+          }
+        }
+        
         // Voice command detection for "submit" in Q2
         if (who === "user" && !isIntroductionPhase && question.kind === "satellite" && 
             text.toLowerCase().includes("submit")) {
+          console.log("[Q2] Voice command 'submit' detected, navigating to next question");
           // Mark question as answered and move to next
           setAnsweredQuestions(prev => new Set(prev).add(question.id));
           const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
