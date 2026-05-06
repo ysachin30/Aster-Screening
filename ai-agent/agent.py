@@ -280,7 +280,7 @@ async def entrypoint(ctx: JobContext):
             return
 
         draw_hint = (
-            " For this question, explicitly tell them: click Draw Trajectory, draw the path, then click Submit & Next."
+            " For this question, explicitly tell them to use the Draw Trajectory button and draw their answer."
             if kind == "satellite"
             else ""
         )
@@ -298,8 +298,9 @@ async def entrypoint(ctx: JobContext):
             "You must START SPEAKING IMMEDIATELY without asking for confirmation. "
             "First say: 'This is " + q_label.lower() + ".' "
             "Then read the QUESTION TEXT BELOW VERBATIM, then ask the student for their answer. "
-            "After the student answers, do at most 2 short follow-up questions (except satellite: no cross-question), "
-            "then instruct them to click Submit & Next. "
+            "After the student answers, do at most 2 short follow-up questions (except satellite: no cross-question). "
+            "If this is Q2, tell them to click Next Part after they finish the drawing. "
+            "Otherwise, instruct them to click Submit & Next. "
             "Do NOT end the interview." 
             f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
             + (f"\nCONTEXT (do not read verbatim): {qctx}\n" if qctx else "")

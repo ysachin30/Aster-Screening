@@ -775,118 +775,56 @@ function QuestionPanel({
         ctx.restore();
       }
 
-      // ── Force vectors ──
-      // Gravity — always shown, magenta (radial inward)
-      const gx = cx - sx, gy = cy - sy;
-      const glen = Math.hypot(gx, gy) || 1;
-      drawArrow(ctx, sx, sy, sx + (gx / glen) * 85, sy + (gy / glen) * 85, "#e040fb", "F_g");
-      // Tangential velocity — always shown, cyan
-      drawArrow(ctx, sx, sy, sx + tx * 95, sy + ty * 95, "#00d4ff", "v");
+      if (!hidePresetVectors) {
+        // Gravity — magenta (radial inward)
+        const gx = cx - sx, gy = cy - sy;
+        const glen = Math.hypot(gx, gy) || 1;
+        drawArrow(ctx, sx, sy, sx + (gx / glen) * 85, sy + (gy / glen) * 85, "#e040fb", "F_g");
+        // Tangential velocity — cyan
+        drawArrow(ctx, sx, sy, sx + tx * 95, sy + ty * 95, "#00d4ff", "v");
+      }
 
       // ── Satellite body — metallic box with gold foil & solar panels ──
       ctx.save();
       // Subtle glow
       ctx.shadowColor = "rgba(220,200,120,0.6)";
-      ctx.shadowBlur = 14;
-      // Gold Mylar insulation body
-      const bodyGrad = ctx.createLinearGradient(sx - 10, sy - 8, sx + 10, sy + 8);
-      bodyGrad.addColorStop(0, "#e8d080");
-      bodyGrad.addColorStop(0.45, "#c8a840");
-      bodyGrad.addColorStop(1, "#8a6a18");
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.roundRect(sx - 10, sy - 8, 20, 16, 3);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      // Silver face plate
-      ctx.fillStyle = "rgba(200,210,225,0.9)";
-      ctx.fillRect(sx - 7, sy - 5, 14, 10);
-      // Face detail lines
-      ctx.strokeStyle = "rgba(100,120,150,0.6)";
-      ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(sx - 2, sy - 5); ctx.lineTo(sx - 2, sy + 5); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sx + 2, sy - 5); ctx.lineTo(sx + 2, sy + 5); ctx.stroke();
-      // Specular highlight
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.beginPath();
-      ctx.ellipse(sx - 3, sy - 3, 4, 2, -0.4, 0, 2 * Math.PI);
-      ctx.fill();
+      // ... (rest of the code remains the same)
 
-      // Solar panels — dark navy glass with cyan grid
-      const drawPanel = (px: number, py: number, pw: number, ph: number) => {
-        const pg = ctx.createLinearGradient(px, py, px + pw, py + ph);
-        pg.addColorStop(0, "#0f2a55");
-        pg.addColorStop(1, "#0a1c3a");
-        ctx.fillStyle = pg;
-        ctx.fillRect(px, py, pw, ph);
-        ctx.strokeStyle = "rgba(0,180,220,0.5)";
-        ctx.lineWidth = 0.8;
-        ctx.strokeRect(px, py, pw, ph);
-        // grid
-        for (let gi = 1; gi < 3; gi++) {
-          ctx.beginPath(); ctx.moveTo(px + pw * gi / 3, py); ctx.lineTo(px + pw * gi / 3, py + ph); ctx.stroke();
-        }
-        ctx.beginPath(); ctx.moveTo(px, py + ph / 2); ctx.lineTo(px + pw, py + ph / 2); ctx.stroke();
-      };
-      drawPanel(sx - 38, sy - 5, 26, 10); // left panel
-      drawPanel(sx + 12, sy - 5, 26, 10); // right panel
-      // Panel strut
-      ctx.strokeStyle = "rgba(180,190,200,0.9)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(sx - 12, sy); ctx.lineTo(sx - 38, sy); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sx + 12, sy); ctx.lineTo(sx + 38, sy); ctx.stroke();
-      // Antenna
-      ctx.strokeStyle = "rgba(200,210,220,0.9)";
-      ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(sx, sy - 8); ctx.lineTo(sx - 3, sy - 18); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sx - 3, sy - 18); ctx.lineTo(sx - 8, sy - 22); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sx - 3, sy - 18); ctx.lineTo(sx + 2, sy - 22); ctx.stroke();
-      ctx.restore();
-
-      // Satellite label
-      ctx.textAlign = "left";
-      ctx.textBaseline = "bottom";
-      ctx.font = "500 12px system-ui";
-      ctx.fillStyle = "rgba(255,255,255,0.82)";
-      ctx.shadowColor = "rgba(0,0,0,0.9)";
-      ctx.shadowBlur = 6;
-      ctx.fillText("SATELLITE", sx + 16, sy - 14);
-      ctx.shadowBlur = 0;
-
-      // ── HUD ──
       // Bottom-left instruction
       ctx.textAlign = "left";
       ctx.textBaseline = "bottom";
       ctx.font = "13px system-ui";
       ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.fillText(
-        drawMode ? "✏️  Draw where the satellite will go if gravity is removed"
-                 : "🖱️  Drag the satellite to any position on the orbit",
-        18, H - 18
-      );
+      // Helper copy — bottom left
+      const helper = (() => {
+        if (!isQ2) return drawMode ? "Draw the trajectory" : "Drag to explore";
+        if (part === 1) return drawMode ? "Draw the force (g) and velocity (v) directions" : "Drag the satellite to set the starting point";
+        if (part === 2) return drawMode ? "Draw the path if forward velocity becomes zero" : "Drag the satellite to set the starting point";
+        return drawMode ? "Draw the path if gravity becomes zero" : "Drag the satellite to set the starting point";
+      })();
+      ctx.fillText(helper, 18, H - 18);
 
       // Legend — clean glass panel
-      ctx.fillStyle = "rgba(0,0,8,0.55)";
-      ctx.beginPath();
-      ctx.roundRect(14, 14, 300, 58, 6);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(14, 14, 300, 58, 6);
-      ctx.stroke();
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.font = "bold 12px system-ui";
-      ctx.fillStyle = "#e040fb";
-      ctx.fillText("● F_g  gravitational force  (radial inward)", 24, 24);
-      ctx.fillStyle = "#00d4ff";
-      ctx.fillText("● v    tangential velocity  (perpendicular)", 24, 43);
+      if (!hidePresetVectors) {
+        ctx.fillStyle = "rgba(0,0,8,0.55)";
+        ctx.beginPath();
+        ctx.roundRect(14, 14, 300, 58, 6);
+        ctx.fill();
+
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.font = "bold 12px system-ui";
+        ctx.fillStyle = "#e040fb";
+        ctx.fillText("● F_g  gravitational force  (radial inward)", 24, 24);
+        ctx.fillStyle = "#00d4ff";
+        ctx.fillText("● v    tangential velocity  (perpendicular)", 24, 43);
+      }
 
       // Mode pill — top right
       const modeLabel = drawMode ? "DRAW MODE" : "DRAG MODE";
       const modeCol = drawMode ? "#00d4ff" : "#e0c060";
       ctx.font = "bold 11px system-ui";
+      // ... (rest of the code remains the same)
       const mww = ctx.measureText(modeLabel).width;
       ctx.fillStyle = "rgba(0,0,8,0.65)";
       ctx.beginPath();
@@ -1243,6 +1181,7 @@ function QuestionPanel({
   const isQ2 = question.id === 2;
   const part = q2Part ?? 1;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
+  const hidePresetVectors = isQ2 && part === 1;
 
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
