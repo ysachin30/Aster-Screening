@@ -1706,6 +1706,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               <p className="text-white/40 text-sm max-w-md mx-auto">
                 Getting to know each other before we begin the questions
               </p>
+              {/* TEMPORARY: Skip button for testing */}
+              <button
+                onClick={() => setIsIntroductionPhase(false)}
+                className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-400/40 text-red-300 text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                ⏭️ Skip Introduction (Testing)
+              </button>
             </div>
           </div>
         </div>
