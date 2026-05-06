@@ -1472,7 +1472,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
             setActiveQuestionIdx(nextIdx);
             const nextQ = QUESTIONS[nextIdx];
             try {
-              const msg = JSON.stringify({ type: "question_changed", questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
+              const msg = JSON.stringify({ type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints });
               room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
             } catch (e) { console.warn("[LK] publishData failed", e); }
           } else {
@@ -1533,9 +1533,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     const nextQ = QUESTIONS[nextIdx];
     // Publish data message to agent so it reads the new question aloud
     try {
-      const msg = JSON.stringify({ type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
-      room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
-      console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind });
+      const msg = JSON.stringify({ type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints });
+      setTimeout(() => {
+        try {
+          room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
+          console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind, code: nextIdx });
+        } catch (e) { console.warn("[LK] publishData failed", e); }
+      }, 2000);
     } catch (e) { console.warn("[LK] publishData failed", e); }
 
     setAnsweredQuestions(prev => new Set(prev).add(question.id));
