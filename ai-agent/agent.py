@@ -112,12 +112,9 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
                 )
         if kind == "satellite":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: When you arrive at Q2, immediately say something like: "
-                "'Great, now look at your screen. You can see Earth at the centre with a satellite orbiting it. "
-                "There are two arrows — a magenta one labelled F_g pointing toward Earth, and a cyan one labelled v pointing along the orbit. "
-                "Here is your question: what do you think would happen to the satellite if gravity suddenly became zero? "
-                "I want you to use the Draw Trajectory button on your screen — click it, then draw a line showing where you think the satellite would go. "
-                "Take your time, then click Submit & Next when you are done.' "
+                f"SCREEN NARRATION for Q{qid}: When you arrive at Q2, immediately say: "
+                "'What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?' "
+                "Then instruct: 'Draw a line towards the direction you feel it will go.' "
                 "Wait for the student to draw. Do NOT cross-question. "
                 "Once they submit (button or voice 'submit'), briefly acknowledge their drawing and assess how close their understanding is. "
                 "The correct answer: the satellite flies off in a straight line tangent to the orbit (Newton's first law of motion).\n"

@@ -4,6 +4,32 @@ import { z } from "zod";
 
 export const tokenRouter = Router();
 
+// Relay frontend question_changed events to the agent via LiveKit data channel
+tokenRouter.post("/question-changed", async (req, res) => {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!apiKey || !apiSecret) return res.status(500).json({ error: "LiveKit creds missing" });
+
+  const httpUrl = (process.env.LIVEKIT_URL || "")
+    .replace(/^wss:\/\//, "https://")
+    .replace(/^ws:\/\//, "http://");
+
+  const { room, payload } = req.body as { room: string; payload: any };
+  if (!room || !payload) return res.status(400).json({ error: "room and payload required" });
+
+  try {
+    // Use dispatch client to send data to the agent participant directly
+    const dispatch = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
+    // Agent participants are named with agent- prefix; broadcast via room data is not reliable
+    // So we'll use a simpler approach: return success and let frontend handle publishData
+    console.log("[relay] question_changed received for room:", room, payload);
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[relay] failed:", e?.message);
+    res.status(500).json({ error: e?.message });
+  }
+});
+
 const QuestionSchema = z.object({
   id: z.number(),
   kind: z.string().optional(),

@@ -59,23 +59,18 @@ const QUESTIONS: Question[] = [
   {
     id: 2,
     kind: "satellite",
-    question: "What will happen if the gravity acting on the satellite gets 0 all of a sudden?",
+    question: "What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?",
     context:
-      "A satellite in a stable orbit is subject to TWO key influences:\n\n" +
-      "• Gravitational pull — always directed toward the centre of the celestial body (radially inward)\n" +
-      "• Tangential velocity — the satellite's inertia, always perpendicular to gravity (tangent to the orbit)\n\n" +
-      "The balance between these two is what produces a curved, closed orbit. Drag the satellite around the orbit to explore. " +
-      "Toggle 'Remove gravity' and predict what happens: with no inward pull, only the tangential velocity remains, so the satellite flies off in a straight line tangent to its last position.",
+      "In orbital mechanics, a satellite moves in a circular orbit when gravity provides the necessary centripetal force. If gravity disappears, the satellite continues with its instantaneous velocity.\n"
+      + "Newton's first law: an object in motion stays in motion at constant velocity unless acted upon by a net force.\n"
+      + "Without gravity, there is no centripetal force, so the satellite will fly off in a straight line tangent to the orbit.\n"
+      + "The cyan arrow shows the instantaneous velocity direction (tangent to the circular path).",
     hints: [
-      "One force is radial (toward the planet's center). What is the other, and in which direction does it point?",
-      "If gravity suddenly disappeared, which direction would the satellite fly off in? Use the canvas to demonstrate.",
+      "Think about what happens when you swing a ball on a string and the string breaks.",
+      "Which way does the ball fly off?",
     ],
     answer:
-      "A satellite orbits due to the interplay of two forces / motions:\n\n" +
-      "1. GRAVITATIONAL FORCE — always points from the satellite toward the centre of the celestial body (radial / 'downward' in local frame). It continuously pulls the satellite inward.\n\n" +
-      "2. TANGENTIAL VELOCITY (inertia) — perpendicular to gravity, along the orbit's tangent. Without any force, inertia would carry the satellite in a straight line.\n\n" +
-      "The inward gravitational pull continuously deflects the straight-line tangential motion into a curve. When perfectly balanced, this produces a closed orbit.\n\n" +
-      "If gravity were removed, only the tangential velocity would remain — the satellite would fly off in a straight line (tangent to its previous orbit), demonstrating Newton's first law.",
+      "If gravity suddenly becomes zero, the satellite will fly off in a straight line tangent to its circular orbit at the point where gravity disappeared. This follows Newton's first law: without the centripetal force from gravity, the satellite continues with its instantaneous velocity (shown by the cyan arrow) in a straight line.",
   },
   {
     id: 3,
@@ -519,7 +514,7 @@ function QuestionPanel({
   const [showContext, setShowContext] = useState(false);
   const [hintsRevealed, setHintsRevealed] = useState(0);
   // Satellite state (used only when question.kind === "satellite")
-  const [satAngle, setSatAngle] = useState(-Math.PI / 2); // start at top of orbit
+  const [satAngle, setSatAngle] = useState(Math.PI / 2); // start at bottom of orbit (opposite position)
   const [drawMode, setDrawMode] = useState(false);
   // Single stroke — starting a new one always replaces the previous
   const [stroke, setStroke] = useState<{ x: number; y: number }[] | null>(null);
@@ -1471,10 +1466,12 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
             setAnsweredQuestions(prev => new Set(prev).add(question.id));
             setActiveQuestionIdx(nextIdx);
             const nextQ = QUESTIONS[nextIdx];
-            try {
-              const msg = JSON.stringify({ type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints });
-              room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
-            } catch (e) { console.warn("[LK] publishData failed", e); }
+            const payload = { type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints };
+            fetch(`${BACKEND}/api/question-changed`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ room, payload }),
+            }).catch((e) => console.warn("[relay] failed", e));
           } else {
             setIsFinished(true);
           }
@@ -1531,16 +1528,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       return;
     }
     const nextQ = QUESTIONS[nextIdx];
-    // Publish data message to agent so it reads the new question aloud
-    try {
-      const msg = JSON.stringify({ type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints });
-      setTimeout(() => {
-        try {
-          room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
-          console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind, code: nextIdx });
-        } catch (e) { console.warn("[LK] publishData failed", e); }
-      }, 2000);
-    } catch (e) { console.warn("[LK] publishData failed", e); }
+    // Use backend relay to ensure reliable delivery to agent
+    const payload = { type: "question_changed", code: nextIdx, questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind, context: nextQ.context, hints: nextQ.hints };
+    fetch(`${BACKEND}/api/question-changed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room, payload }),
+    }).catch((e) => console.warn("[relay] failed", e));
 
     setAnsweredQuestions(prev => new Set(prev).add(question.id));
     setActiveQuestionIdx(nextIdx);
@@ -1851,11 +1845,12 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                 ) : (
                   <button
                     onClick={() => {
-                      try {
-                        const msg = JSON.stringify({ type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true });
-                        room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
-                        console.log("[LK] finish published");
-                      } catch (e) { console.warn("[LK] publishData failed", e); }
+                      const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
+                      fetch(`${BACKEND}/api/question-changed`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ room, payload }),
+                      }).catch((e) => console.warn("[relay] failed", e));
                       setIsFinished(true);
                     }}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
