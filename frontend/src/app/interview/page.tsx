@@ -22,7 +22,7 @@ type DualAvatarState = {
   human: AvatarState;
 };
 type TranscriptEntry = { who: "ai" | "user"; text: string; id: number };
-type QuestionKind = "gif" | "satellite" | "differentiability";
+type QuestionKind = "gif" | "satellite" | "differentiability" | "text";
 type Question = {
   id: number;
   kind: QuestionKind;
@@ -100,6 +100,27 @@ const QUESTIONS: Question[] = [
       "2. CUSP — one-sided slopes both diverge to infinity with opposite signs.\n" +
       "3. VERTICAL TANGENT — slope → ∞.\n\n" +
       "Continuity guarantees the graph has no break; non-differentiability means there is a 'kink' — no matter how far you zoom in, the corner never smooths out.",
+  },
+  {
+    id: 4,
+    kind: "text",
+    question: "A cube is painted on all six faces and then cut into 27 equal smaller cubes. How many small cubes will have exactly two painted faces?",
+    context:
+      "A cube divided into 27 cubes means:\n3×3×3\n\nExactly two painted faces occur on edge cubes excluding corners.",
+    hints: [
+      "How many edges does a cube have?",
+      "On each edge, which cubes are not corners?",
+    ],
+    answer:
+      "A cube has 12 edges.\n\nFor a 3×3×3 cube, each edge has 3 small cubes. The two end cubes are corners; the middle cube has exactly two painted faces.\n\nThus: 12×1 = 12.\n\nTherefore, 12 small cubes have exactly two painted faces.",
+  },
+  {
+    id: 5,
+    kind: "text",
+    question: "Question 5",
+    context: "",
+    hints: [],
+    answer: "",
   },
 ];
 
@@ -504,8 +525,6 @@ function QuestionPanel({
   const [stroke, setStroke] = useState<{ x: number; y: number }[] | null>(null);
   // Q3: probe x-position in function space (for differentiability canvas)
   const [diffX, setDiffX] = useState(2.5);
-  // Submit state for Q2
-  const [submitTimer, setSubmitTimer] = useState<NodeJS.Timeout | null>(null);
   const draggingRef = useRef(false);
   const drawingRef = useRef(false);
 
@@ -514,35 +533,6 @@ function QuestionPanel({
     const canvas = canvasRef.current;
     if (canvas) onCanvasReady(canvas);
   }, [onCanvasReady]);
-
-  // Auto-submit timer for Q2 - reset on any interaction
-  useEffect(() => {
-    if (question.kind !== "satellite" || !stroke) return;
-    
-    console.log("[Q2] Starting auto-submit timer for stroke:", stroke.length, "points");
-    
-    // Clear existing timer
-    if (submitTimer) {
-      clearTimeout(submitTimer);
-    }
-    
-    // Set new timer for 3 seconds
-    const timer = setTimeout(() => {
-      console.log("[Q2] Auto-submitting and navigating to next question");
-      // Mark question as answered and move to next
-      setAnsweredQuestions(prev => new Set(prev).add(question.id));
-      const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
-      if (nextIndex < QUESTIONS.length) {
-        setActiveQuestionIdx(nextIndex);
-      }
-    }, 3000);
-    
-    setSubmitTimer(timer);
-    
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [stroke, question.id, question.kind]);
 
   // Redraw whenever relevant state changes
   useEffect(() => {
@@ -1066,10 +1056,10 @@ function QuestionPanel({
         ctx.fillText("← slope = −1  |  slope = +1 →", pcx, pcy - 16);
       } else {
         ctx.fillStyle = "#f0c040";
-        ctx.shadowColor = "#f0c040"; ctx.shadowBlur = 6;
-        ctx.textAlign = clampedDX > 0 ? "left" : "right";
-        const lx = clampedDX > 0 ? pcx + 16 : pcx - 16;
-        ctx.fillText(`slope = ${slope > 0 ? "+1" : "−1"}`, lx, pcy - 14);
+        ctx.fillText(`x = ${clampedDX.toFixed(2)} — smooth & differentiable`, pcx, pcy - 14);
+        ctx.font = "11px system-ui";
+        ctx.fillStyle = "rgba(255,255,255,0.55)";
+        ctx.fillText(`Unique tangent: slope = ${slope > 0 ? "+1" : "−1"}.  Drag toward x = 0 to see the corner!`, pcx, pcy - 10);
       }
       ctx.shadowBlur = 0;
       ctx.restore();
@@ -1295,12 +1285,28 @@ function QuestionPanel({
           </button>
         )}
 
-        {/* Q1: GIF visual */}
+        {/* Non-interactive visuals */}
         {!isInteractive && (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={GIF_URL} alt="visual cue" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
+            {question.kind === "gif" ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={GIF_URL} alt="visual cue" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
+              </>
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-purple-950/30 to-slate-950">
+                <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(236,72,153,0.25), transparent 40%), radial-gradient(circle at 80% 30%, rgba(34,211,238,0.18), transparent 45%), radial-gradient(circle at 50% 80%, rgba(139,92,246,0.18), transparent 50%)" }} />
+                <div className="absolute inset-0 flex items-center justify-center p-10">
+                  <div className="max-w-xl w-full rounded-3xl border border-white/10 bg-white/5 backdrop-blur-md p-8">
+                    <div className="text-xs tracking-widest text-white/40 font-semibold">VISUAL THINKING</div>
+                    <div className="mt-2 text-white/80 text-sm leading-relaxed">
+                      Use the question text above. When you are ready, click <span className="font-semibold text-fuchsia-200">Submit & Next</span>.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -1326,35 +1332,17 @@ function QuestionPanel({
           💡 Hint {remainingHints > 0 ? `(${remainingHints})` : "done"}
         </button>
         {isSatellite && (
-          <>
-            <button
-              onClick={toggleDrawMode}
-              disabled={frozen}
-              className={`flex-1 py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
-                drawMode
-                  ? "bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/60 text-cyan-100 shadow-sm shadow-cyan-500/40"
-                  : "bg-white/5 hover:bg-white/10 border-white/20 text-white/70"
-              }`}
-            >
-              {drawMode ? "✏️ Drawing mode — tap to drag" : "✏️ Draw trajectory"}
-            </button>
-            <button
-              onClick={() => {
-                console.log("[Q2] Submit button clicked, navigating to next question");
-                // Mark question as answered and move to next
-                setAnsweredQuestions(prev => new Set(prev).add(question.id));
-                // Auto-navigate to next question
-                const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
-                if (nextIndex < QUESTIONS.length) {
-                  setActiveQuestionIdx(nextIndex);
-                }
-              }}
-              disabled={frozen}
-              className="flex-1 py-2 rounded-xl text-[11px] font-semibold bg-green-500/20 hover:bg-green-500/30 border border-green-400/40 text-green-300 transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99]"
-            >
-              📤 Submit Answer
-            </button>
-          </>
+          <button
+            onClick={toggleDrawMode}
+            disabled={frozen}
+            className={`flex-1 py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
+              drawMode
+                ? "bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/60 text-cyan-100 shadow-sm shadow-cyan-500/40"
+                : "bg-white/5 hover:bg-white/10 border-white/20 text-white/70"
+            }`}
+          >
+            {drawMode ? "✏️ Drawing mode — tap to drag" : "✏️ Draw trajectory"}
+          </button>
         )}
       </div>
     </div>
@@ -1457,20 +1445,19 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           upsertTranscript(who, text, segId, isFinal);
         }
         
-        // Auto-transition when AI says the magic phrase
-        if (who === "ai" && isIntroductionPhase && text.toLowerCase().includes("move to the first question")) {
-          setIsIntroductionPhase(false);
-        }
-        
-        // Auto-navigate to next question when AI says "move to the next question"
-        if (who === "ai" && !isIntroductionPhase && text.toLowerCase().includes("move to the next question")) {
-          console.log("[Navigation] AI said 'move to the next question', navigating from Q" + question.id + " to Q" + (question.id + 1));
-          // Mark current question as answered
-          setAnsweredQuestions(prev => new Set(prev).add(question.id));
-          // Navigate to next question
-          const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
-          if (nextIndex < QUESTIONS.length) {
-            setActiveQuestionIdx(nextIndex);
+        // Auto-transition out of intro when AI begins Q1
+        if (who === "ai" && isIntroductionPhase) {
+          const t = text.toLowerCase();
+          if (
+            t.includes("move to the first question") ||
+            t.includes("let's move to the first question") ||
+            t.includes("now let's move to the first question") ||
+            t.includes("first question") ||
+            t.includes("question 1") ||
+            t.includes("question one") ||
+            t.includes("on your screen")
+          ) {
+            setIsIntroductionPhase(false);
           }
         }
         
@@ -1478,11 +1465,18 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         if (who === "user" && !isIntroductionPhase && question.kind === "satellite" && 
             text.toLowerCase().includes("submit")) {
           console.log("[Q2] Voice command 'submit' detected, navigating to next question");
-          // Mark question as answered and move to next
-          setAnsweredQuestions(prev => new Set(prev).add(question.id));
-          const nextIndex = QUESTIONS.findIndex(q => q.id === question.id) + 1;
-          if (nextIndex < QUESTIONS.length) {
-            setActiveQuestionIdx(nextIndex);
+          const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
+          const nextIdx = currentIdx + 1;
+          if (nextIdx < QUESTIONS.length) {
+            setAnsweredQuestions(prev => new Set(prev).add(question.id));
+            setActiveQuestionIdx(nextIdx);
+            const nextQ = QUESTIONS[nextIdx];
+            try {
+              const msg = JSON.stringify({ type: "question_changed", questionId: nextQ.id, question: nextQ.question, kind: nextQ.kind });
+              room.localParticipant.publishData(new TextEncoder().encode(msg), { reliable: true });
+            } catch (e) { console.warn("[LK] publishData failed", e); }
+          } else {
+            setIsFinished(true);
           }
         }
       }
@@ -1494,7 +1488,9 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         if (json.type === "transcript" || json.segment || json.text) {
           const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
           const text = json.text ?? json.segment?.text ?? "";
-          upsertTranscript(who, text, `data-${Date.now()}`, true);
+          if (!isIntroductionPhase) {
+            upsertTranscript(who, text, `data-${Date.now()}`, true);
+          }
         }
       } catch {};
     };
