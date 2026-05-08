@@ -32,9 +32,9 @@ type Question = {
   answer: string;
 };
 
-const Q2_PART_1 = "Part 1: The satellite is initially above the North Pole (0° position). Draw and explain the force directions acting on it in orbit.";
-const Q2_PART_2 = "Part 2: The satellite is now at the 90° right-side position and moving clockwise. If forward velocity suddenly becomes zero, draw the trajectory it will follow.";
-const Q2_PART_3 = "Part 3: The satellite is now at the 180° position, opposite to the initial point, below the South Pole. No force direction is shown. Draw the trajectory it will follow if gravitational force suddenly becomes zero.";
+const Q2_PART_1 = "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.";
+const Q2_PART_2 = "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?";
+const Q2_PART_3 = "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?";
 const getQ2PartText = (part: number) => {
   if (part === 1) return Q2_PART_1;
   if (part === 2) return Q2_PART_2;
@@ -66,14 +66,13 @@ const QUESTIONS: Question[] = [
     id: 2,
     kind: "satellite",
     question:
-      Q2_PART_1 + "\n\n"
-      + Q2_PART_2 + "\n\n"
-      + Q2_PART_3,
+      "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.\n\n"
+      + "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?\n\n"
+      + "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?",
     context:
       "What is a satellite?\n"
       + "A satellite is an object that moves around a larger celestial body due to gravity.\n"
-      + "Example: the Moon around Earth, or an artificial satellite around Earth.\n\n"
-      + "For this question, treat the orbital motion as clockwise.",
+      + "Example: the Moon around Earth, or an artificial satellite around Earth.",
     hints: [],
     answer:
       "Part 1: In a stable orbit, gravity points inward toward the central body (radially inward) and provides centripetal acceleration. The satellite's velocity is tangential (perpendicular to gravity).\n\n"
@@ -529,7 +528,7 @@ function QuestionPanel({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showContext, setShowContext] = useState(false);
   // Satellite state (used only when question.kind === "satellite")
-  const [satAngle, setSatAngle] = useState(-Math.PI / 2); // start above north pole
+  const [satAngle, setSatAngle] = useState(Math.PI / 2); // start at bottom of orbit (opposite position)
   const [drawMode, setDrawMode] = useState(false);
   // Multiple strokes (needed for Q2 Part 1: draw g and v separately)
   const [strokes, setStrokes] = useState<{ x: number; y: number }[][]>([]);
@@ -537,18 +536,6 @@ function QuestionPanel({
   const [diffX, setDiffX] = useState(2.5);
   const draggingRef = useRef(false);
   const drawingRef = useRef(false);
-  const isQ2 = question.id === 2;
-  const part = q2Part ?? 1;
-
-  useEffect(() => {
-    if (!isQ2) return;
-    // Fixed, deterministic satellite positions by part:
-    // Part 1 -> 0° above north pole, Part 2 -> 90° right, Part 3 -> 180° below south pole.
-    if (part === 1) setSatAngle(-Math.PI / 2);
-    else if (part === 2) setSatAngle(0);
-    else setSatAngle(Math.PI / 2);
-  }, [isQ2, part]);
-
 
   // Publish the canvas once (on mount). The same canvas is reused across questions.
   useEffect(() => {
@@ -756,8 +743,7 @@ function QuestionPanel({
       // ── Satellite position ──
       const sx = cx + orbitR * Math.cos(satAngle);
       const sy = cy + orbitR * Math.sin(satAngle);
-      // Tangential unit vector for CLOCKWISE motion.
-      const tx = Math.sin(satAngle);
+      const tx = -Math.sin(satAngle); // tangential unit vector (CCW)
       const ty = Math.cos(satAngle);
 
       // ── USER STROKES — multiple strokes with neon glow ──
@@ -792,28 +778,6 @@ function QuestionPanel({
         drawArrow(ctx, sx, sy, sx + (gx / glen) * 85, sy + (gy / glen) * 85, "#e040fb", "F_g");
         // Tangential velocity — cyan
         drawArrow(ctx, sx, sy, sx + tx * 95, sy + ty * 95, "#00d4ff", "v");
-
-        // Radial/tangential component cues for Part 1 teaching moment.
-        if (isQ2 && part === 1) {
-          ctx.save();
-          ctx.strokeStyle = "rgba(255,255,255,0.35)";
-          ctx.setLineDash([5, 5]);
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(cx, cy);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(sx + tx * 120, sy + ty * 120);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle = "rgba(255,255,255,0.75)";
-          ctx.font = "600 11px system-ui";
-          ctx.fillText("radial (toward Earth)", sx + (gx / glen) * 55, sy + (gy / glen) * 55);
-          ctx.fillText("tangential (clockwise)", sx + tx * 70, sy + ty * 70);
-          ctx.restore();
-        }
       }
 
       // ── Satellite body — metallic box with gold foil & solar panels ──
@@ -830,9 +794,9 @@ function QuestionPanel({
       // Helper copy — bottom left
       const helper = (() => {
         if (!isQ2) return drawMode ? "Draw the trajectory" : "Drag to explore";
-        if (part === 1) return drawMode ? "Draw force directions, then compare with shown vectors" : "Part 1 fixed at 0° above North Pole";
-        if (part === 2) return drawMode ? "Draw the path if forward velocity becomes zero (clockwise orbit)" : "Part 2 fixed at 90° right-side position";
-        return drawMode ? "Draw the path if gravity becomes zero" : "Part 3 fixed at 180° below South Pole";
+        if (part === 1) return drawMode ? "Draw the force (g) and velocity (v) directions" : "Drag the satellite to set the starting point";
+        if (part === 2) return drawMode ? "Draw the path if forward velocity becomes zero" : "Drag the satellite to set the starting point";
+        return drawMode ? "Draw the path if gravity becomes zero" : "Drag the satellite to set the starting point";
       })();
       ctx.fillText(helper, 18, H - 18);
 
@@ -849,7 +813,7 @@ function QuestionPanel({
         ctx.fillStyle = "#e040fb";
         ctx.fillText("● F_g  gravitational force  (radial inward)", 24, 24);
         ctx.fillStyle = "#00d4ff";
-        ctx.fillText("● v    tangential velocity  (clockwise)", 24, 43);
+        ctx.fillText("● v    tangential velocity  (perpendicular)", 24, 43);
       }
 
       // Mode pill — top right
@@ -1148,7 +1112,7 @@ function QuestionPanel({
       if (drawMode) {
         drawingRef.current = true;
         setStrokes(prev => [...prev, [p]]);
-      } else if (!isQ2) {
+      } else {
         draggingRef.current = true;
         const canvas = canvasRef.current!;
         setSatAngle(Math.atan2(p.y - canvas.height / 2, p.x - canvas.width / 2));
@@ -1173,7 +1137,7 @@ function QuestionPanel({
           next[next.length - 1] = [...next[next.length - 1], p];
           return next;
         });
-      } else if (draggingRef.current && !isQ2) {
+      } else if (draggingRef.current) {
         const canvas = canvasRef.current!;
         setSatAngle(Math.atan2(p.y - canvas.height / 2, p.x - canvas.width / 2));
       }
@@ -1196,8 +1160,10 @@ function QuestionPanel({
   const isSatellite = question.kind === "satellite";
   const isDiff = question.kind === "differentiability";
   const isInteractive = isSatellite || isDiff;
+  const isQ2 = question.id === 2;
+  const part = q2Part ?? 1;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
-  const hidePresetVectors = !isQ2 || part !== 1 ? true : strokes.length === 0;
+  const hidePresetVectors = isQ2;
   const canAdvanceQ2Part = strokes.length > 0;
 
   return (

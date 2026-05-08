@@ -381,9 +381,11 @@ async def entrypoint(ctx: JobContext):
     logger.info("✓ AgentSession started — interview running for %d s", INTERVIEW_SECONDS)
     # Kick off the interview proactively so the student hears the interviewer immediately.
     try:
+        await asyncio.sleep(2.0)
         session.generate_reply(
             instructions=(
-                "Start now. Greet the student in English and begin the warm-up immediately."
+                "Start now with exactly one short greeting line in English, such as 'Hi' or 'Hello'. "
+                "Then continue with your warm-up interview conversation."
             )
         )
         logger.info("✓ Initial greeting trigger sent")
