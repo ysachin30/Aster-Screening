@@ -248,6 +248,12 @@ function InterviewPageContent() {
 function AudioUnlockGate({ children }: { children: React.ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
   const [micOk, setMicOk] = useState<boolean | null>(null);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micTooLow, setMicTooLow] = useState(false);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const meterAudioCtxRef = useRef<AudioContext | null>(null);
+  const meterFrameRef = useRef<number | null>(null);
+  const micStartTsRef = useRef<number>(0);
 
   const unlock = async () => {
     try {
@@ -255,11 +261,58 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
       if (AC) { const ctx = new AC(); await ctx.resume(); ctx.close(); }
     } catch {}
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      micStreamRef.current = stream;
       setMicOk(true);
+
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (AC) {
+        const meterCtx = new AC();
+        meterAudioCtxRef.current = meterCtx;
+        const source = meterCtx.createMediaStreamSource(stream);
+        const analyser = meterCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        micStartTsRef.current = Date.now();
+        const tick = () => {
+          analyser.getByteTimeDomainData(data);
+          let sumSquares = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sumSquares += v * v;
+          }
+          const rms = Math.sqrt(sumSquares / data.length);
+          const normalized = Math.min(1, rms * 6);
+          setMicLevel(normalized);
+          if (Date.now() - micStartTsRef.current > 3000) {
+            setMicTooLow(normalized < 0.04);
+          }
+          meterFrameRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      }
     } catch { setMicOk(false); }
     setUnlocked(true);
   };
+
+  useEffect(() => {
+    return () => {
+      if (meterFrameRef.current) cancelAnimationFrame(meterFrameRef.current);
+      if (meterAudioCtxRef.current) {
+        meterAudioCtxRef.current.close().catch(() => {});
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, []);
 
   if (!unlocked) {
     return (
@@ -293,6 +346,24 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
       {micOk === false && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-red-500/20 border border-red-400/30 text-red-300 text-xs backdrop-blur-xl shadow-lg">
           ⚠️ Microphone blocked — check browser permissions
+        </div>
+      )}
+      {micOk === true && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-black/40 border border-white/15 text-white/80 text-xs backdrop-blur-xl shadow-lg min-w-[260px]">
+          <div className="flex items-center gap-2">
+            <span>Mic level</span>
+            <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+              <div
+                className={`h-full transition-all ${micTooLow ? "bg-amber-400" : "bg-emerald-400"}`}
+                style={{ width: `${Math.max(4, Math.round(micLevel * 100))}%` }}
+              />
+            </div>
+          </div>
+          {micTooLow && (
+            <p className="mt-1 text-amber-300">
+              Voice looks too low. Move closer to mic / increase input volume.
+            </p>
+          )}
         </div>
       )}
       {children}
@@ -1182,6 +1253,7 @@ function QuestionPanel({
   const part = q2Part ?? 1;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
   const hidePresetVectors = isQ2;
+  const canAdvanceQ2Part = strokes.length > 0;
 
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
@@ -1315,10 +1387,10 @@ function QuestionPanel({
             setDrawMode(false);
             setQ2Part(p => Math.min(3, p + 1));
           }}
-          disabled={frozen}
-          className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20"
+          disabled={frozen || !canAdvanceQ2Part}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Next Part
+          {canAdvanceQ2Part ? "Next Part" : "Draw answer to unlock Next Part"}
         </button>
       )}
     </div>
@@ -1352,6 +1424,14 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [q2Part, setQ2Part] = useState(1);
+  const englishLike = useCallback((text: string) => {
+    const cleaned = text.replace(/\s+/g, " ").trim();
+    if (!cleaned) return false;
+    const latinMatches = cleaned.match(/[A-Za-z]/g) ?? [];
+    const alphaMatches = cleaned.match(/[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/g) ?? [];
+    if (alphaMatches.length === 0) return false;
+    return latinMatches.length / alphaMatches.length >= 0.65;
+  }, []);
 
   useEffect(() => {
     if (question.id !== 2) setQ2Part(1);
@@ -1370,8 +1450,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     };
 
     const sendOnce = async (attempt: number) => {
+      const payloadWithAttempt = {
+        ...payload,
+        forceSpeak: attempt === 1,
+        sentAt: Date.now(),
+      };
       try {
-        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payloadWithAttempt)), { reliable: true });
         console.log("[LK] question_changed published", {
           nextId: nextQ.id,
           kind: nextQ.kind,
@@ -1384,7 +1469,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         await fetch(`${BACKEND}/api/question-changed`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ room: room.name, payload }),
+          body: JSON.stringify({ room: room.name, payload: payloadWithAttempt }),
         });
       } catch (e) {
         console.warn("[relay] question_changed failed", e);
@@ -1488,7 +1573,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
         const isFinal = seg.final ?? seg.isFinal ?? true;
         // Only store transcript once question phase begins
-        if (!isIntroductionPhase) {
+        if (!isIntroductionPhase && englishLike(text)) {
           upsertTranscript(who, text, segId, isFinal);
         }
         
@@ -1527,7 +1612,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         if (json.type === "transcript" || json.segment || json.text) {
           const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
           const text = json.text ?? json.segment?.text ?? "";
-          if (!isIntroductionPhase) {
+          if (!isIntroductionPhase && englishLike(text)) {
             upsertTranscript(who, text, `data-${Date.now()}`, true);
           }
         }
@@ -1550,6 +1635,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     doPublish,
     ended,
     upsertTranscript,
+    englishLike,
     isIntroductionPhase,
     question.id,
     question.kind,
