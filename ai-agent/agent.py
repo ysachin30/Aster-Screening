@@ -385,6 +385,22 @@ async def entrypoint(ctx: JobContext):
     logger.info("Starting AgentSession…")
     await session.start(agent, room=ctx.room)
     logger.info("✓ AgentSession started — interview running for %d s", INTERVIEW_SECONDS)
+    # Kick off the interview proactively so the student hears the interviewer immediately.
+    try:
+        session.conversation.item.create(
+            type="message",
+            role="user",
+            content=[{
+                "type": "input_text",
+                "text": (
+                    "[SYSTEM] Start now. Greet the student in English and begin the warm-up immediately."
+                ),
+            }],
+        )
+        session.response.create()
+        logger.info("✓ Initial greeting trigger sent")
+    except Exception as e:
+        logger.warning("Could not trigger initial greeting: %s", e)
 
     await asyncio.sleep(INTERVIEW_SECONDS)
     logger.info("✓ Timer elapsed — closing session")
