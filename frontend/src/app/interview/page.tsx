@@ -248,12 +248,6 @@ function InterviewPageContent() {
 function AudioUnlockGate({ children }: { children: React.ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
   const [micOk, setMicOk] = useState<boolean | null>(null);
-  const [micLevel, setMicLevel] = useState(0);
-  const [micTooLow, setMicTooLow] = useState(false);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const meterAudioCtxRef = useRef<AudioContext | null>(null);
-  const meterFrameRef = useRef<number | null>(null);
-  const micStartTsRef = useRef<number>(0);
 
   const unlock = async () => {
     try {
@@ -261,58 +255,11 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
       if (AC) { const ctx = new AC(); await ctx.resume(); ctx.close(); }
     } catch {}
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      micStreamRef.current = stream;
+      await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicOk(true);
-
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
-      if (AC) {
-        const meterCtx = new AC();
-        meterAudioCtxRef.current = meterCtx;
-        const source = meterCtx.createMediaStreamSource(stream);
-        const analyser = meterCtx.createAnalyser();
-        analyser.fftSize = 2048;
-        source.connect(analyser);
-        const data = new Uint8Array(analyser.fftSize);
-        micStartTsRef.current = Date.now();
-        const tick = () => {
-          analyser.getByteTimeDomainData(data);
-          let sumSquares = 0;
-          for (let i = 0; i < data.length; i++) {
-            const v = (data[i] - 128) / 128;
-            sumSquares += v * v;
-          }
-          const rms = Math.sqrt(sumSquares / data.length);
-          const normalized = Math.min(1, rms * 6);
-          setMicLevel(normalized);
-          if (Date.now() - micStartTsRef.current > 3000) {
-            setMicTooLow(normalized < 0.04);
-          }
-          meterFrameRef.current = requestAnimationFrame(tick);
-        };
-        tick();
-      }
     } catch { setMicOk(false); }
     setUnlocked(true);
   };
-
-  useEffect(() => {
-    return () => {
-      if (meterFrameRef.current) cancelAnimationFrame(meterFrameRef.current);
-      if (meterAudioCtxRef.current) {
-        meterAudioCtxRef.current.close().catch(() => {});
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
-      }
-    };
-  }, []);
 
   if (!unlocked) {
     return (
@@ -346,24 +293,6 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
       {micOk === false && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-red-500/20 border border-red-400/30 text-red-300 text-xs backdrop-blur-xl shadow-lg">
           ⚠️ Microphone blocked — check browser permissions
-        </div>
-      )}
-      {micOk === true && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-black/40 border border-white/15 text-white/80 text-xs backdrop-blur-xl shadow-lg min-w-[260px]">
-          <div className="flex items-center gap-2">
-            <span>Mic level</span>
-            <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
-              <div
-                className={`h-full transition-all ${micTooLow ? "bg-amber-400" : "bg-emerald-400"}`}
-                style={{ width: `${Math.max(4, Math.round(micLevel * 100))}%` }}
-              />
-            </div>
-          </div>
-          {micTooLow && (
-            <p className="mt-1 text-amber-300">
-              Voice looks too low. Move closer to mic / increase input volume.
-            </p>
-          )}
         </div>
       )}
       {children}
