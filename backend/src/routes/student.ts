@@ -10,13 +10,20 @@ studentRouter.get("/student/:id", async (req, res) => {
 });
 
 studentRouter.post("/student", async (req, res) => {
-  const { student_id, name, email, jee_score } = req.body || {};
+  const { student_id, name, email, jee_score, phone, whatsapp_consent } = req.body || {};
   if (!student_id || !name) return res.status(400).json({ error: "student_id and name required" });
+  const consent =
+    whatsapp_consent === undefined || whatsapp_consent === null ? true : Boolean(whatsapp_consent);
   await pool.query(
-    `INSERT INTO students (student_id, name, email, jee_score)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (student_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, jee_score = EXCLUDED.jee_score`,
-    [student_id, name, email || null, jee_score || null],
+    `INSERT INTO students (student_id, name, email, jee_score, phone, whatsapp_consent)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (student_id) DO UPDATE SET
+       name = EXCLUDED.name,
+       email = EXCLUDED.email,
+       jee_score = EXCLUDED.jee_score,
+       phone = COALESCE(EXCLUDED.phone, students.phone),
+       whatsapp_consent = EXCLUDED.whatsapp_consent`,
+    [student_id, name, email || null, jee_score ?? null, phone || null, consent],
   );
   res.json({ ok: true });
 });

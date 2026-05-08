@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+import time
+from datetime import datetime, timezone
 
 import httpx
 from dotenv import load_dotenv
@@ -135,15 +137,42 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
     )
     return "".join(parts)
 
-GRADING_PROMPT = """You are grading a 10-minute admissions interview. Below is
-the full conversation transcript. Score the student 0-10 on each dimension:
+GRADING_PROMPT = """You are grading a 10-minute admissions interview for engineering admissions.
+The transcript uses segment tags like [intro], [Q1], [Q2-P1] so you know which phase each line belongs to.
 
-1. curiosity    — Did they ask questions? Explore tangents? Show genuine interest?
-2. exploratory  — Did they try multiple approaches? Revise their thinking when challenged?
-3. confidence   — Did they speak clearly, defend choices, recover from pushback?
+Score the student 0-10 on EACH sub-metric below. Use the full transcript; weigh question-phase answers
+more heavily than small talk in [intro], but the intro still informs communication and confidence.
 
-Return ONLY valid minified JSON with keys: curiosity, exploratory, confidence, summary.
-`summary` must be 2-3 sentences describing the student's cognitive profile.
+ACADEMIC (0-10 each):
+- correctness: Final answers vs expected reasoning (use private rubric cues in the dialogue; do not invent facts).
+- understanding: Grasp of underlying concepts, not only the final answer.
+- reasoning_depth: Step-by-step reasoning, justification, response to follow-ups.
+
+PERSONALITY / NON-ACADEMIC (0-10 each):
+- confidence: Defends choices, recovers from pushback.
+- communication: Clarity, English fluency, structure.
+- curiosity: Asks questions, explores ideas.
+- exploratory_thinking: Tries multiple angles, revises when challenged.
+- comprehension: Listens and responds to the interviewer's intent.
+
+Return ONLY valid minified JSON with this exact shape:
+{{
+  "academic": {{
+    "correctness": <number>,
+    "understanding": <number>,
+    "reasoning_depth": <number>
+  }},
+  "personality": {{
+    "confidence": <number>,
+    "communication": <number>,
+    "curiosity": <number>,
+    "exploratory_thinking": <number>,
+    "comprehension": <number>
+  }},
+  "summary": "<2-3 sentences>",
+  "strengths": ["<at most 3 short bullets>"],
+  "improvements": ["<at most 3 short bullets>"]
+}}
 
 Transcript:
 ---
@@ -219,6 +248,15 @@ async def entrypoint(ctx: JobContext):
     transcript_lines: list[str] = []
     active_q: dict[str, object] = {"qid": None, "part": None}
     interview_finished: dict[str, bool] = {"value": False}
+
+    def _line_prefix() -> str:
+        qid = active_q.get("qid")
+        if qid is None:
+            return "[intro]"
+        part = active_q.get("part")
+        if part is not None:
+            return f"[Q{qid}-P{part}]"
+        return f"[Q{qid}]"
     early_close_pattern = re.compile(
         r"\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me)\b",
         flags=re.IGNORECASE,
@@ -228,14 +266,14 @@ async def entrypoint(ctx: JobContext):
     def on_user_speech(ev) -> None:
         text = getattr(ev, "transcript", None) or getattr(ev, "text", str(ev))
         if text:
-            transcript_lines.append(f"Student: {text}")
+            transcript_lines.append(f"{_line_prefix()} Student: {text}")
             logger.info("📝 Student: %s", text)
 
     @session.on("agent_speech_committed")
     def on_agent_speech(ev) -> None:
         text = getattr(ev, "transcript", None) or getattr(ev, "text", str(ev))
         if text:
-            transcript_lines.append(f"Interviewer: {text}")
+            transcript_lines.append(f"{_line_prefix()} Interviewer: {text}")
             logger.info("📝 AI: %s", text)
             if not interview_finished["value"] and early_close_pattern.search(text):
                 logger.warning("⚠️ Early closing phrase detected before finish. Forcing continuation.")
@@ -345,6 +383,7 @@ async def entrypoint(ctx: JobContext):
             _schedule()
 
     logger.info("Starting AgentSession…")
+    session_started_at = time.time()
     await session.start(agent, room=ctx.room)
     logger.info("✓ AgentSession started — interview running for %d s", INTERVIEW_SECONDS)
     # Kick off the interview proactively so the student hears the interviewer immediately.
@@ -363,19 +402,50 @@ async def entrypoint(ctx: JobContext):
 
     await session.aclose()
 
-    # Grade & post evaluation
+    duration_secs = int(time.time() - session_started_at)
+    started_iso = datetime.fromtimestamp(session_started_at, tz=timezone.utc).isoformat()
+    completed_iso = datetime.now(timezone.utc).isoformat()
+
+    # Grade & post rich report
     transcript = "\n".join(transcript_lines)
     logger.info("--- TRANSCRIPT (%d lines) ---", len(transcript_lines))
     for line in transcript_lines:
         logger.info("  %s", line)
 
-    scores = await _grade(transcript, google_key)
-    await _post_evaluation(
+    graded = await _grade(transcript, google_key)
+    await _post_report(
         student_id=student_identity,
         room=ctx.room.name,
-        transcript=transcript,
-        scores=scores,
+        transcript_full=transcript,
+        graded=graded,
+        started_at=started_iso,
+        completed_at=completed_iso,
+        duration_secs=duration_secs,
     )
+
+
+def _normalize_grade_payload(data: dict) -> dict:
+    ac = data.get("academic") if isinstance(data.get("academic"), dict) else {}
+    pe = data.get("personality") if isinstance(data.get("personality"), dict) else {}
+    strengths = data.get("strengths") if isinstance(data.get("strengths"), list) else []
+    improvements = data.get("improvements") if isinstance(data.get("improvements"), list) else []
+    return {
+        "academic": {
+            "correctness": float(ac.get("correctness", 0) or 0),
+            "understanding": float(ac.get("understanding", 0) or 0),
+            "reasoning_depth": float(ac.get("reasoning_depth", 0) or 0),
+        },
+        "personality": {
+            "confidence": float(pe.get("confidence", 0) or 0),
+            "communication": float(pe.get("communication", 0) or 0),
+            "curiosity": float(pe.get("curiosity", 0) or 0),
+            "exploratory_thinking": float(pe.get("exploratory_thinking", 0) or 0),
+            "comprehension": float(pe.get("comprehension", 0) or 0),
+        },
+        "summary": str(data.get("summary", "") or ""),
+        "strengths": [str(x) for x in strengths][:3],
+        "improvements": [str(x) for x in improvements][:3],
+    }
 
 
 async def _grade(transcript: str, api_key: str) -> dict:
@@ -389,36 +459,54 @@ async def _grade(transcript: str, api_key: str) -> dict:
         )
         resp = model.generate_content(GRADING_PROMPT.format(transcript=transcript))
         data = json.loads(resp.text or "{}")
-        return {
-            "curiosity": float(data.get("curiosity", 0)),
-            "exploratory": float(data.get("exploratory", 0)),
-            "confidence": float(data.get("confidence", 0)),
-            "summary": data.get("summary", ""),
-        }
+        return _normalize_grade_payload(data)
     except Exception as e:
         logger.exception("grading failed: %s", e)
-        return {"curiosity": 0, "exploratory": 0, "confidence": 0, "summary": f"grading error: {e}"}
+        return _normalize_grade_payload({
+            "academic": {"correctness": 0, "understanding": 0, "reasoning_depth": 0},
+            "personality": {
+                "confidence": 0,
+                "communication": 0,
+                "curiosity": 0,
+                "exploratory_thinking": 0,
+                "comprehension": 0,
+            },
+            "summary": f"grading error: {e}",
+            "strengths": [],
+            "improvements": [],
+        })
 
 
-async def _post_evaluation(*, student_id: str, room: str, transcript: str, scores: dict):
+async def _post_report(
+    *,
+    student_id: str,
+    room: str,
+    transcript_full: str,
+    graded: dict,
+    started_at: str,
+    completed_at: str,
+    duration_secs: int,
+):
     payload = {
         "student_id": student_id,
         "room": room,
-        "transcript": transcript,
-        "scores": {
-            "curiosity": scores["curiosity"],
-            "exploratory": scores["exploratory"],
-            "confidence": scores["confidence"],
-        },
-        "summary": scores.get("summary", ""),
+        "transcript_full": transcript_full,
+        "academic": graded["academic"],
+        "personality": graded["personality"],
+        "summary": graded.get("summary", ""),
+        "strengths": graded.get("strengths", []),
+        "improvements": graded.get("improvements", []),
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "duration_secs": duration_secs,
     }
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(f"{BACKEND_URL}/api/evaluation", json=payload)
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(f"{BACKEND_URL}/api/report", json=payload)
             r.raise_for_status()
-            logger.info("✓ Evaluation posted for %s", student_id)
+            logger.info("✓ Interview report posted for %s", student_id)
     except Exception as e:
-        logger.exception("failed to post evaluation: %s", e)
+        logger.exception("failed to post interview report: %s", e)
 
 
 if __name__ == "__main__":
