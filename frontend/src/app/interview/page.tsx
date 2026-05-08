@@ -1349,6 +1349,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const inProgressRef = useRef<Map<string, number>>(new Map());
   const pendingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const publishedRef = useRef(false);
+  const lastAutoAnnounceRef = useRef<string>("");
   const prevSpeakerRef = useRef<"none" | "ai" | "user">("none");
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1375,6 +1376,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       kind: nextQ.kind,
       context: nextQ.context,
       hints: nextQ.hints,
+      eventId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...(extra || {}),
     };
 
@@ -1405,8 +1407,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       }
     };
 
-    // Keep sync in 1-3s window with retries.
-    [1000, 2000, 3000].forEach((ms, idx) => {
+    // Fire immediately, then retry in 1s and 2s.
+    [0, 1000, 2000].forEach((ms, idx) => {
       setTimeout(() => {
         void sendOnce(idx + 1);
       }, ms);
@@ -1429,7 +1431,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         console.warn("[relay] finish failed", e);
       }
     };
-    [1000, 2000, 3000].forEach((ms, idx) => {
+    [0, 1000, 2000].forEach((ms, idx) => {
       setTimeout(() => {
         void sendOnce(idx + 1);
       }, ms);
@@ -1608,6 +1610,17 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     if (idx < 0) return;
     publishQuestionChanged(idx, question, { part: q2Part });
   }, [q2Part, question, isIntroductionPhase, publishQuestionChanged]);
+
+  // Backup auto-trigger whenever the visible question changes.
+  useEffect(() => {
+    if (isIntroductionPhase) return;
+    const idx = QUESTIONS.findIndex(q => q.id === question.id);
+    if (idx < 0) return;
+    const key = `${question.id}:${question.id === 2 ? q2Part : 0}`;
+    if (lastAutoAnnounceRef.current === key) return;
+    lastAutoAnnounceRef.current = key;
+    publishQuestionChanged(idx, question, question.id === 2 ? { part: q2Part } : undefined);
+  }, [activeQuestionIdx, question, q2Part, isIntroductionPhase, publishQuestionChanged]);
 
   const stateLabel: Record<AvatarState, string> = {
     idle: "Waiting for you…", speaking: "Speaking…", listening: "Listening to you…",

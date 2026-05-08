@@ -229,6 +229,8 @@ async def entrypoint(ctx: JobContext):
     transcript_lines: list[str] = []
     last_code: dict[str, object] = {"value": None}
     last_part: dict[str, object] = {"value": None}
+    last_event_id: dict[str, object] = {"value": None}
+    active_q: dict[str, object] = {"qid": None, "part": None}
     interview_finished: dict[str, bool] = {"value": False}
     early_close_pattern = re.compile(
         r"\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary)\b",
@@ -276,7 +278,14 @@ async def entrypoint(ctx: JobContext):
         finish = bool(payload.get("finish"))
         part = payload.get("part")
         force_speak = bool(payload.get("forceSpeak"))
+        event_id = payload.get("eventId")
         logger.info("📨 question_changed received: code=%s Q%s (%s) part=%s finish=%s", code, qid, kind, part, finish)
+
+        if event_id and last_event_id.get("value") == event_id and not finish:
+            logger.info("↺ duplicate event_id ignored: %s", event_id)
+            return
+        if event_id:
+            last_event_id["value"] = event_id
 
         # Drop duplicates (common when frontend retries). For Q2, treat each part as distinct.
         if (
@@ -291,6 +300,8 @@ async def entrypoint(ctx: JobContext):
         if code is not None:
             last_code["value"] = code
             last_part["value"] = part
+        active_q["qid"] = qid
+        active_q["part"] = part
 
         if finish:
             interview_finished["value"] = True
@@ -320,6 +331,11 @@ async def entrypoint(ctx: JobContext):
             hints_line = ""
 
         q_label = f"Question {qid}" + (f", Part {part}" if part is not None else "")
+        nav_line = "instruct them to click Submit & Next."
+        if qid == 2 and part in (1, 2):
+            nav_line = "instruct them to click Next Part."
+        elif qid == 2 and part == 3:
+            nav_line = "instruct them to click Submit & Next."
         notice = (
             f"[SYSTEM] HARD OVERRIDE: The UI is now showing {q_label} (code={code}, kind={kind}). "
             "You must START SPEAKING IMMEDIATELY without asking for confirmation. "
@@ -327,8 +343,7 @@ async def entrypoint(ctx: JobContext):
             "First say: 'This is " + q_label.lower() + ".' "
             "Then read the QUESTION TEXT BELOW VERBATIM, then ask the student for their answer. "
             "After the student answers, do at most 2 short follow-up questions (except satellite: no cross-question). "
-            "If this is Q2, tell them to click Next Part after they finish the drawing. "
-            "Otherwise, instruct them to click Submit & Next. "
+            + nav_line + " "
             "Do NOT end the interview." 
             f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
             + (f"\nCONTEXT (do not read verbatim): {qctx}\n" if qctx else "")
