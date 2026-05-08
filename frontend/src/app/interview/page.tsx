@@ -1404,6 +1404,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
 
   const upsertTranscript = useCallback((who: "ai" | "user", text: string, segId: string, isFinal: boolean) => {
     if (!text.trim()) return;
+    if (/\[system\]/i.test(text)) return;
     const existingEntryId = inProgressRef.current.get(segId);
     if (existingEntryId !== undefined) {
       setTranscript(prev => prev.map(e => e.id === existingEntryId ? { ...e, text: text.trim() } : e));
