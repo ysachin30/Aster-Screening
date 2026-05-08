@@ -53,10 +53,7 @@ const QUESTIONS: Question[] = [
       "• Electromagnetic Force — acts between charged particles; responsible for most everyday forces like contact forces, friction, and rigidity of objects\n" +
       "• Strong Nuclear Force — holds protons and neutrons together inside the nucleus\n" +
       "• Weak Nuclear Force — responsible for certain types of radioactive decay",
-    hints: [
-      "At the microscopic level, what gives rise to the normal force between two surfaces in contact?",
-      "Think in isolated manner — where electrons of both surfaces are meeting face to face.",
-    ],
+    hints: [],
     answer:
       "At the microscopic level, the normal force arises due to electromagnetic interactions between atoms in the two surfaces in contact.\n\n" +
       "When an object (like a book) is placed on a surface:\n" +
@@ -76,11 +73,7 @@ const QUESTIONS: Question[] = [
       "What is a satellite?\n"
       + "A satellite is an object that moves around a larger celestial body due to gravity.\n"
       + "Example: the Moon around Earth, or an artificial satellite around Earth.",
-    hints: [
-      "Part 1: Draw the gravitational force (g) pointing toward Earth, and the velocity (v) perpendicular to it.",
-      "Part 2: If v becomes zero, which direction would the satellite move?",
-      "Part 3: If gravity becomes zero, which direction would the satellite move?",
-    ],
+    hints: [],
     answer:
       "Part 1: In a stable orbit, gravity points inward toward the central body (radially inward) and provides centripetal acceleration. The satellite's velocity is tangential (perpendicular to gravity).\n\n"
       + "Part 2: If forward velocity suddenly becomes zero, only gravity acts, so the satellite would move straight toward the central body (along the g axis) and fall inward.\n\n"
@@ -98,10 +91,7 @@ const QUESTIONS: Question[] = [
       "• A cusp — one-sided slopes both go to ±∞\n" +
       "• A vertical tangent — slope becomes infinite\n\n" +
       "Classic example: f(x) = |x| is continuous everywhere, but at x = 0 the left slope is −1 and the right slope is +1 — they disagree, so no unique tangent exists.",
-    hints: [
-      "Think about what the derivative represents geometrically — it is the slope of the tangent line. What happens to that slope at a sharp corner?",
-      "Drag the probe point on the canvas toward x = 0 and watch what happens to the tangent line.",
-    ],
+    hints: [],
     answer:
       "Geometrically, a function that is continuous but not differentiable at a point has NO unique tangent line there.\n\n" +
       "This manifests as:\n" +
@@ -116,20 +106,27 @@ const QUESTIONS: Question[] = [
     question: "A cube is painted on all six faces and then cut into 27 equal smaller cubes. How many small cubes will have exactly two painted faces?",
     context:
       "A cube divided into 27 cubes means:\n3×3×3\n\nExactly two painted faces occur on edge cubes excluding corners.",
-    hints: [
-      "How many edges does a cube have?",
-      "On each edge, which cubes are not corners?",
-    ],
+    hints: [],
     answer:
       "A cube has 12 edges.\n\nFor a 3×3×3 cube, each edge has 3 small cubes. The two end cubes are corners; the middle cube has exactly two painted faces.\n\nThus: 12×1 = 12.\n\nTherefore, 12 small cubes have exactly two painted faces.",
   },
   {
     id: 5,
     kind: "text",
-    question: "Question 5",
-    context: "",
+    question: "How does electric current propagate through a conductor if electrons move so slowly?",
+    context:
+      "Electric current is the rate of flow of charge.\n" +
+      "In metallic conductors:\n" +
+      "• Free electrons move randomly\n" +
+      "• An electric field causes them to drift slowly\n" +
+      "• The actual drift speed of electrons is extremely small.",
     hints: [],
-    answer: "",
+    answer:
+      "Although individual electrons move very slowly, the electric field propagates through the conductor at a significant fraction of the speed of light.\n" +
+      "When a switch is turned on:\n" +
+      "• The electric field is established throughout the conductor very rapidly\n" +
+      "• Electrons throughout the wire begin drifting almost simultaneously\n" +
+      "• Energy is transferred rapidly through the electromagnetic field",
   },
 ];
 
@@ -530,7 +527,6 @@ function QuestionPanel({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showContext, setShowContext] = useState(false);
-  const [hintsRevealed, setHintsRevealed] = useState(0);
   // Satellite state (used only when question.kind === "satellite")
   const [satAngle, setSatAngle] = useState(Math.PI / 2); // start at bottom of orbit (opposite position)
   const [drawMode, setDrawMode] = useState(false);
@@ -1096,20 +1092,7 @@ function QuestionPanel({
     const ctxLines = wrap(question.context, W - 48);
     ctxLines.slice(0, 10).forEach((l, i) => ctx.fillText(l, 24, y + i * 18));
     y += Math.min(ctxLines.length, 10) * 18 + 16;
-    if (hintsRevealed > 0) {
-      ctx.fillStyle = "#f59e0b";
-      ctx.font = "bold 12px system-ui";
-      ctx.fillText("HINTS", 24, y);
-      y += 18;
-      ctx.fillStyle = "#fbbf24";
-      ctx.font = "12px system-ui";
-      for (const h of question.hints.slice(0, hintsRevealed)) {
-        const lines = wrap("• " + h, W - 48);
-        lines.forEach(l => { ctx.fillText(l, 24, y); y += 16; });
-        y += 4;
-      }
-    }
-  }, [question, hintsRevealed, satAngle, drawMode, strokes, diffX]);
+  }, [question, satAngle, drawMode, strokes, diffX]);
 
   // Convert a pointer event to canvas-space coords
   const pointerToCanvas = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1174,7 +1157,6 @@ function QuestionPanel({
   const clearStroke = () => setStrokes([]);
   const toggleDrawMode = () => setDrawMode(d => !d);
 
-  const remainingHints = question.hints.length - hintsRevealed;
   const isSatellite = question.kind === "satellite";
   const isDiff = question.kind === "differentiability";
   const isInteractive = isSatellite || isDiff;
@@ -1270,32 +1252,15 @@ function QuestionPanel({
           </>
         )}
 
-        {/* Hints overlay (both modes) */}
-        {hintsRevealed > 0 && (
-          <div className="absolute top-2 left-2 right-2 flex flex-col gap-1.5 pointer-events-none">
-            {question.hints.slice(0, hintsRevealed).map((h, i) => (
-              <div key={i} className="px-2.5 py-1.5 rounded-xl bg-amber-500/85 border border-amber-300/50 text-[10px] font-medium text-amber-950 backdrop-blur-md shadow-lg animate-fade-up">
-                💡 <span className="font-semibold">{h}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-2 shrink-0">
-        <button
-          onClick={() => setHintsRevealed(Math.min(hintsRevealed + 1, question.hints.length))}
-          disabled={remainingHints === 0 || frozen}
-          className="flex-1 py-2 rounded-xl text-[11px] font-semibold bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 hover:border-amber-400/50 text-amber-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-[0.99]"
-        >
-          💡 Hint {remainingHints > 0 ? `(${remainingHints})` : "done"}
-        </button>
-        {isSatellite && (
+      {isSatellite && (
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={toggleDrawMode}
             disabled={frozen}
-            className={`flex-1 py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
+            className={`w-full py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
               drawMode
                 ? "bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/60 text-cyan-100 shadow-sm shadow-cyan-500/40"
                 : "bg-white/5 hover:bg-white/10 border-white/20 text-white/70"
@@ -1303,15 +1268,14 @@ function QuestionPanel({
           >
             {drawMode ? "✏️ Drawing mode — tap to drag" : "✏️ Draw trajectory"}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Q2 part navigation */}
       {isSatellite && isQ2 && typeof setQ2Part === "function" && part < 3 && (
         <button
           onClick={() => {
             clearStroke();
-            setHintsRevealed(0);
             setShowContext(false);
             setDrawMode(false);
             setQ2Part(p => Math.min(3, p + 1));
@@ -1368,6 +1332,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   }, [question.id]);
 
   const publishQuestionChanged = useCallback((nextIdx: number, nextQ: Question, extra?: Record<string, unknown>) => {
+    const eventId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const payload = {
       type: "question_changed",
       code: nextIdx,
@@ -1375,16 +1340,15 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       question: nextQ.id === 2 ? getQ2PartText((extra?.part as number) || 1) : nextQ.question,
       kind: nextQ.kind,
       context: nextQ.context,
-      hints: nextQ.hints,
-      eventId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      eventId,
       ...(extra || {}),
     };
 
     const sendOnce = async (attempt: number) => {
       const payloadWithAttempt = {
         ...payload,
-        forceSpeak: attempt === 1,
         sentAt: Date.now(),
+        attempt,
       };
       try {
         room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payloadWithAttempt)), { reliable: true });
@@ -1524,16 +1488,6 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           }
         }
         
-        // Voice command detection for "submit" / "next" in Q2
-        if (who === "user" && !isIntroductionPhase && question.id === 2 && question.kind === "satellite" && 
-            (text.toLowerCase().includes("submit") || text.toLowerCase().includes("next"))) {
-          console.log("[Q2] Voice command 'submit' detected, navigating to next question");
-          if (q2Part < 3) {
-            setQ2Part(p => Math.min(3, p + 1));
-            return;
-          }
-          navigateToNext();
-        }
       }
     };
 
@@ -1570,7 +1524,6 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     isIntroductionPhase,
     question.id,
     question.kind,
-    q2Part,
   ]);
 
   useEffect(() => { if (ended) setAvatarState({ ai: "ended", human: "ended" }); }, [ended]);
@@ -1587,7 +1540,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     inProgressRef.current.clear();
   }, [activeQuestionIdx]);
 
-  // Navigates to next question and notifies the AI agent about the new question
+  // Navigates to next question (agent announcement comes from the auto-visible effect below).
   const navigateToNext = useCallback(() => {
     const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
     const nextIdx = currentIdx + 1;
@@ -1595,23 +1548,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       setIsFinished(true);
       return;
     }
-    const nextQ = QUESTIONS[nextIdx];
-    // Publish data message to agent so it reads the new question aloud
-    publishQuestionChanged(nextIdx, nextQ, nextQ.id === 2 ? { part: 1 } : undefined);
-
     setAnsweredQuestions(prev => new Set(prev).add(question.id));
     setActiveQuestionIdx(nextIdx);
-  }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished, publishQuestionChanged]);
+  }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished]);
 
-  useEffect(() => {
-    if (isIntroductionPhase) return;
-    if (question.id !== 2) return;
-    const idx = QUESTIONS.findIndex(q => q.id === question.id);
-    if (idx < 0) return;
-    publishQuestionChanged(idx, question, { part: q2Part });
-  }, [q2Part, question, isIntroductionPhase, publishQuestionChanged]);
-
-  // Backup auto-trigger whenever the visible question changes.
+  // Single source of truth: announce when visible question or Q2 part changes.
   useEffect(() => {
     if (isIntroductionPhase) return;
     const idx = QUESTIONS.findIndex(q => q.id === question.id);
