@@ -1368,13 +1368,59 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       hints: nextQ.hints,
       ...(extra || {}),
     };
-    setTimeout(() => {
+
+    const sendOnce = async (attempt: number) => {
       try {
         room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
-        console.log("[LK] question_changed published", { nextId: nextQ.id, kind: nextQ.kind, code: nextIdx, part: (extra as any)?.part });
+        console.log("[LK] question_changed published", {
+          nextId: nextQ.id,
+          kind: nextQ.kind,
+          code: nextIdx,
+          part: (extra as any)?.part,
+          attempt,
+        });
       } catch (e) { console.warn("[LK] publishData failed", e); }
-    }, 2000);
-  }, [room.localParticipant]);
+      try {
+        await fetch(`${BACKEND}/api/question-changed`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room: room.name, payload }),
+        });
+      } catch (e) {
+        console.warn("[relay] question_changed failed", e);
+      }
+    };
+
+    // Keep sync in 1-3s window with retries.
+    [1000, 2000, 3000].forEach((ms, idx) => {
+      setTimeout(() => {
+        void sendOnce(idx + 1);
+      }, ms);
+    });
+  }, [room.localParticipant, room.name]);
+
+  const publishFinish = useCallback((payload: Record<string, unknown>) => {
+    const sendOnce = async (attempt: number) => {
+      try {
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+        console.log("[LK] finish published", { attempt });
+      } catch (e) { console.warn("[LK] finish publishData failed", e); }
+      try {
+        await fetch(`${BACKEND}/api/question-changed`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room: room.name, payload }),
+        });
+      } catch (e) {
+        console.warn("[relay] finish failed", e);
+      }
+    };
+    [1000, 2000, 3000].forEach((ms, idx) => {
+      setTimeout(() => {
+        void sendOnce(idx + 1);
+      }, ms);
+    });
+  }, [room.localParticipant, room.name]);
 
   const upsertTranscript = useCallback((who: "ai" | "user", text: string, segId: string, isFinal: boolean) => {
     if (!text.trim()) return;
@@ -1860,12 +1906,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                   <button
                     onClick={() => {
                       const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
-                      setTimeout(() => {
-                        try {
-                          room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
-                          console.log("[LK] finish published");
-                        } catch (e) { console.warn("[LK] publishData failed", e); }
-                      }, 2000);
+                      publishFinish(payload);
                       setIsFinished(true);
                     }}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
