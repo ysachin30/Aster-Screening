@@ -1314,6 +1314,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const pendingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const publishedRef = useRef(false);
   const lastAutoAnnounceRef = useRef<string>("");
+  /** When intro→question transition fires; drop late user STT from intro for 2.5s */
+  const introEndedAtRef = useRef<number>(0);
   const prevSpeakerRef = useRef<"none" | "ai" | "user">("none");
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1470,7 +1472,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         const isFinal = seg.final ?? seg.isFinal ?? true;
         // Only store transcript once question phase begins
         if (!isIntroductionPhase && englishLike(text)) {
-          upsertTranscript(who, text, segId, isFinal);
+          const now = Date.now();
+          const inGrace = introEndedAtRef.current > 0 && now - introEndedAtRef.current < 2500;
+          if (!(inGrace && who === "user")) {
+            upsertTranscript(who, text, segId, isFinal);
+          }
         }
         
         // Auto-transition out of intro when AI begins Q1
@@ -1485,6 +1491,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
             t.includes("question one") ||
             t.includes("on your screen")
           ) {
+            introEndedAtRef.current = Date.now();
             setIsIntroductionPhase(false);
           }
         }
@@ -1499,6 +1506,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
           const text = json.text ?? json.segment?.text ?? "";
           if (!isIntroductionPhase && englishLike(text)) {
+            const inGrace = introEndedAtRef.current > 0 && Date.now() - introEndedAtRef.current < 2500;
+            if (inGrace && who === "user") return;
             upsertTranscript(who, text, `data-${Date.now()}`, true);
           }
         }

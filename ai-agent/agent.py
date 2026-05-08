@@ -9,7 +9,6 @@ Pipeline: LiveKit mic → AgentSession(RealtimeModel) → LiveKit speaker
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -61,7 +60,6 @@ CRITICAL RULES:
 11. NEVER end the interview early. Do NOT say "thank you" / "we will get back to you soon" unless you receive an explicit FINISH signal (finish=true) from the system.
 12. Speak only in English.
 13. After you finish dictating a question or asking a follow-up, STOP and wait silently for the student. Do NOT repeat, rephrase, or restate the question on your own — only repeat if the student explicitly asks you to.
-14. If the student is silent, wait at least 20 seconds before asking a brief check-in like "Are you still there?".
 """
 
 def build_instructions(student_name: str, questions: list[dict]) -> str:
@@ -221,8 +219,6 @@ async def entrypoint(ctx: JobContext):
     transcript_lines: list[str] = []
     active_q: dict[str, object] = {"qid": None, "part": None}
     interview_finished: dict[str, bool] = {"value": False}
-    last_user_speech_at: dict[str, float] = {"value": asyncio.get_running_loop().time()}
-    silence_prompted: dict[str, bool] = {"value": False}
     early_close_pattern = re.compile(
         r"\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me)\b",
         flags=re.IGNORECASE,
@@ -234,8 +230,6 @@ async def entrypoint(ctx: JobContext):
         if text:
             transcript_lines.append(f"Student: {text}")
             logger.info("📝 Student: %s", text)
-            last_user_speech_at["value"] = asyncio.get_running_loop().time()
-            silence_prompted["value"] = False
 
     @session.on("agent_speech_committed")
     def on_agent_speech(ev) -> None:
@@ -310,7 +304,6 @@ async def entrypoint(ctx: JobContext):
             session.generate_reply(instructions=notice)
             active_q["qid"] = qid
             active_q["part"] = part
-            silence_prompted["value"] = False
         except Exception as e:
             logger.warning("Could not inject question_changed notice: %s", e)
 
@@ -365,35 +358,8 @@ async def entrypoint(ctx: JobContext):
     except Exception as e:
         logger.warning("Could not trigger initial greeting: %s", e)
 
-    async def _silence_watchdog() -> None:
-        while True:
-            await asyncio.sleep(1)
-            if interview_finished["value"]:
-                continue
-            if active_q.get("qid") is None:
-                continue
-            if silence_prompted["value"]:
-                continue
-            now = asyncio.get_running_loop().time()
-            if now - last_user_speech_at["value"] >= 20:
-                try:
-                    session.generate_reply(
-                        instructions=(
-                            "Ask one short check-in only: 'Are you still there?'. "
-                            "Do not repeat the full question."
-                        )
-                    )
-                    silence_prompted["value"] = True
-                except Exception as e:
-                    logger.warning("Could not send silence check-in: %s", e)
-
-    watchdog_task = asyncio.create_task(_silence_watchdog())
-
     await asyncio.sleep(INTERVIEW_SECONDS)
     logger.info("✓ Timer elapsed — closing session")
-    watchdog_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await watchdog_task
 
     await session.aclose()
 
