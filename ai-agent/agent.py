@@ -219,8 +219,8 @@ async def entrypoint(ctx: JobContext):
         api_key=google_key,
         voice="Puck",
         instructions=instructions,
-        input_audio_transcription=genai_types.AudioTranscriptionConfig(language="en"),
-        output_audio_transcription=genai_types.AudioTranscriptionConfig(language="en"),
+        input_audio_transcription=genai_types.AudioTranscriptionConfig(),
+        output_audio_transcription=genai_types.AudioTranscriptionConfig(),
     )
 
     agent = Agent(instructions=instructions)
