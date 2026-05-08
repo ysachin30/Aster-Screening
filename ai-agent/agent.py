@@ -253,18 +253,12 @@ async def entrypoint(ctx: JobContext):
             if not interview_finished["value"] and early_close_pattern.search(text):
                 logger.warning("⚠️ Early closing phrase detected before finish. Forcing continuation.")
                 try:
-                    session.conversation.item.create(
-                        type="message",
-                        role="user",
-                        content=[{
-                            "type": "input_text",
-                            "text": (
-                                "[SYSTEM] Do not conclude yet. Continue the active question only. "
-                                "Do not thank the student. Ask one short follow-up or prompt them to continue answering."
-                            ),
-                        }],
+                    session.generate_reply(
+                        instructions=(
+                            "Do not conclude yet. Continue the active question only. "
+                            "Do not thank the student. Ask one short follow-up or prompt them to continue answering."
+                        )
                     )
-                    session.response.create()
                 except Exception as e:
                     logger.warning("Could not inject anti-conclusion notice: %s", e)
 
@@ -305,14 +299,9 @@ async def entrypoint(ctx: JobContext):
 
         if finish:
             interview_finished["value"] = True
-            notice = "[SYSTEM] The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
+            notice = "The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
             try:
-                session.conversation.item.create(
-                    type="message",
-                    role="user",
-                    content=[{"type": "input_text", "text": notice}],
-                )
-                session.response.create()
+                session.generate_reply(instructions=notice)
             except Exception as e:
                 logger.warning("Could not inject finish notice: %s", e)
             return
@@ -351,12 +340,7 @@ async def entrypoint(ctx: JobContext):
             + (draw_hint + "\n" if draw_hint else "")
         )
         try:
-            session.conversation.item.create(
-                type="message",
-                role="user",
-                content=[{"type": "input_text", "text": notice}],
-            )
-            session.response.create()
+            session.generate_reply(instructions=notice)
         except Exception as e:
             logger.warning("Could not inject question_changed notice: %s", e)
 
@@ -402,17 +386,11 @@ async def entrypoint(ctx: JobContext):
     logger.info("✓ AgentSession started — interview running for %d s", INTERVIEW_SECONDS)
     # Kick off the interview proactively so the student hears the interviewer immediately.
     try:
-        session.conversation.item.create(
-            type="message",
-            role="user",
-            content=[{
-                "type": "input_text",
-                "text": (
-                    "[SYSTEM] Start now. Greet the student in English and begin the warm-up immediately."
-                ),
-            }],
+        session.generate_reply(
+            instructions=(
+                "Start now. Greet the student in English and begin the warm-up immediately."
+            )
         )
-        session.response.create()
         logger.info("✓ Initial greeting trigger sent")
     except Exception as e:
         logger.warning("Could not trigger initial greeting: %s", e)
