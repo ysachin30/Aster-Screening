@@ -73,17 +73,17 @@ function deriveRollups(
 }
 
 const AcademicSchema = z.object({
-  correctness: z.number(),
-  understanding: z.number(),
-  reasoning_depth: z.number(),
+  correctness: z.coerce.number(),
+  understanding: z.coerce.number(),
+  reasoning_depth: z.coerce.number(),
 });
 
 const PersonalitySchema = z.object({
-  confidence: z.number(),
-  communication: z.number(),
-  curiosity: z.number(),
-  exploratory_thinking: z.number(),
-  comprehension: z.number(),
+  confidence: z.coerce.number(),
+  communication: z.coerce.number(),
+  curiosity: z.coerce.number(),
+  exploratory_thinking: z.coerce.number(),
+  comprehension: z.coerce.number(),
 });
 
 const PostReportBody = z.object({

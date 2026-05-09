@@ -15,7 +15,7 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
 const GIF_URL = encodeURI("/q1.gif");
 const Q2_THEORY_GIF_URL = encodeURI("/this.gif");
-const Q4_BRIDGE_GIF_URL = encodeURI("/thisisbridge.gif");
+const Q5_BRIDGE_CANVAS_GIF_URL = encodeURI("/smaller-simpler.gif");
 
 type AvatarState = "idle" | "speaking" | "listening" | "thinking" | "ended";
 
@@ -1264,7 +1264,7 @@ function QuestionPanel({
             ) : isQ4BridgeGif ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="w-full h-full object-cover" />
+                <img src={Q5_BRIDGE_CANVAS_GIF_URL} alt="Bridge puzzle visual" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
               </>
             ) : (

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -454,57 +455,171 @@ async def entrypoint(ctx: JobContext):
             await _finalize_and_post("entrypoint_finally")
 
 
+def _trim_transcript_for_grade(transcript: str, limit: int = 100_000) -> str:
+    """Keep grading within context limits while preserving intro + latest answers."""
+    if len(transcript) <= limit:
+        return transcript
+    head = limit // 2
+    tail = limit - head - 80
+    return transcript[:head] + "\n...[middle truncated for grading]...\n" + transcript[-tail:]
+
+
+def _extract_json_dict(raw_text: str) -> dict | None:
+    """Gemini sometimes wraps JSON in fences or adds prose; extract the object robustly."""
+    if not raw_text or not raw_text.strip():
+        return None
+    s = raw_text.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s, count=1, flags=re.IGNORECASE).strip()
+        s = re.sub(r"\s*```\s*$", "", s).strip()
+    try:
+        val = json.loads(s)
+        return val if isinstance(val, dict) else None
+    except json.JSONDecodeError:
+        pass
+    i = s.find("{")
+    if i == -1:
+        return None
+    depth = 0
+    for j in range(i, len(s)):
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    val = json.loads(s[i : j + 1])
+                    return val if isinstance(val, dict) else None
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+def _metric_float(bucket: dict, *keys: str, default: float = 0.0) -> float:
+    for k in keys:
+        if k not in bucket:
+            continue
+        v = bucket[k]
+        if v is None:
+            continue
+        try:
+            x = float(v)
+            if math.isfinite(x):
+                return min(10.0, max(0.0, x))
+        except (TypeError, ValueError):
+            continue
+    return default
+
+
 def _normalize_grade_payload(data: dict) -> dict:
-    ac = data.get("academic") if isinstance(data.get("academic"), dict) else {}
-    pe = data.get("personality") if isinstance(data.get("personality"), dict) else {}
-    strengths = data.get("strengths") if isinstance(data.get("strengths"), list) else []
-    improvements = data.get("improvements") if isinstance(data.get("improvements"), list) else []
+    if not isinstance(data, dict):
+        data = {}
+
+    root = dict(data)
+    nested_scores = root.get("scores")
+    if isinstance(nested_scores, dict):
+        for key in ("academic", "personality"):
+            inner = nested_scores.get(key)
+            if isinstance(inner, dict):
+                outer = root.get(key)
+                root[key] = {**inner, **outer} if isinstance(outer, dict) else inner
+
+    ac = root.get("academic") if isinstance(root.get("academic"), dict) else {}
+    pe = root.get("personality") if isinstance(root.get("personality"), dict) else {}
+    strengths = root.get("strengths") if isinstance(root.get("strengths"), list) else []
+    improvements = root.get("improvements") if isinstance(root.get("improvements"), list) else []
+
     return {
         "academic": {
-            "correctness": float(ac.get("correctness", 0) or 0),
-            "understanding": float(ac.get("understanding", 0) or 0),
-            "reasoning_depth": float(ac.get("reasoning_depth", 0) or 0),
+            "correctness": _metric_float(ac, "correctness", "Correctness"),
+            "understanding": _metric_float(ac, "understanding", "Understanding"),
+            "reasoning_depth": _metric_float(
+                ac, "reasoning_depth", "reasoningDepth", "reasoning", "ReasoningDepth"
+            ),
         },
         "personality": {
-            "confidence": float(pe.get("confidence", 0) or 0),
-            "communication": float(pe.get("communication", 0) or 0),
-            "curiosity": float(pe.get("curiosity", 0) or 0),
-            "exploratory_thinking": float(pe.get("exploratory_thinking", 0) or 0),
-            "comprehension": float(pe.get("comprehension", 0) or 0),
+            "confidence": _metric_float(pe, "confidence", "Confidence"),
+            "communication": _metric_float(pe, "communication", "Communication"),
+            "curiosity": _metric_float(pe, "curiosity", "Curiosity"),
+            "exploratory_thinking": _metric_float(
+                pe,
+                "exploratory_thinking",
+                "exploratoryThinking",
+                "exploratory",
+                "ExploratoryThinking",
+            ),
+            "comprehension": _metric_float(pe, "comprehension", "Comprehension"),
         },
-        "summary": str(data.get("summary", "") or ""),
+        "summary": str(root.get("summary", "") or ""),
         "strengths": [str(x) for x in strengths][:3],
         "improvements": [str(x) for x in improvements][:3],
     }
 
 
 async def _grade(transcript: str, api_key: str) -> dict:
+    empty_err = {
+        "academic": {"correctness": 0, "understanding": 0, "reasoning_depth": 0},
+        "personality": {
+            "confidence": 0,
+            "communication": 0,
+            "curiosity": 0,
+            "exploratory_thinking": 0,
+            "comprehension": 0,
+        },
+        "summary": "",
+        "strengths": [],
+        "improvements": [],
+    }
+
+    trimmed = _trim_transcript_for_grade(transcript)
+    if not trimmed.strip():
+        return _normalize_grade_payload({**empty_err, "summary": "No transcript captured; cannot grade."})
+
+    preferred = (os.environ.get("GRADING_MODEL") or "").strip()
+    fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+    models: list[str] = []
+    for m in [preferred, *fallbacks]:
+        if m and m not in models:
+            models.append(m)
+
     try:
         import google.generativeai as genai
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            "gemini-flash-lite-latest",
-            generation_config={"response_mime_type": "application/json"},
-        )
-        resp = model.generate_content(GRADING_PROMPT.format(transcript=transcript))
-        data = json.loads(resp.text or "{}")
-        return _normalize_grade_payload(data)
     except Exception as e:
-        logger.exception("grading failed: %s", e)
-        return _normalize_grade_payload({
-            "academic": {"correctness": 0, "understanding": 0, "reasoning_depth": 0},
-            "personality": {
-                "confidence": 0,
-                "communication": 0,
-                "curiosity": 0,
-                "exploratory_thinking": 0,
-                "comprehension": 0,
-            },
-            "summary": f"grading error: {e}",
-            "strengths": [],
-            "improvements": [],
-        })
+        logger.exception("grading: google.generativeai configure failed: %s", e)
+        return _normalize_grade_payload({**empty_err, "summary": f"grading error: {e}"})
+
+    prompt = GRADING_PROMPT.format(transcript=trimmed)
+    last_exc: Exception | None = None
+
+    for model_name in models:
+        try:
+            model = genai.GenerativeModel(
+                model_name,
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.25,
+                },
+            )
+            resp = model.generate_content(prompt)
+            raw_text = (getattr(resp, "text", None) or "").strip()
+            parsed = _extract_json_dict(raw_text)
+            if not parsed:
+                raise ValueError(f"empty or non-object JSON from model (preview={raw_text[:240]!r})")
+            logger.info("grading succeeded with model=%s", model_name)
+            return _normalize_grade_payload(parsed)
+        except Exception as e:
+            last_exc = e
+            logger.warning("grading failed for model=%s: %s", model_name, e)
+
+    logger.exception("grading failed for all models; last error: %s", last_exc)
+    return _normalize_grade_payload(
+        {
+            **empty_err,
+            "summary": f"grading error (all models): {last_exc}",
+        }
+    )
 
 
 async def _post_report(
