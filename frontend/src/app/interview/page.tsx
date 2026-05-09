@@ -300,7 +300,10 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
   return (
     <>
       {micOk === false && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-red-500/20 border border-red-400/30 text-red-300 text-xs backdrop-blur-xl shadow-lg">
+        <div
+          className="fixed z-40 px-4 py-2.5 rounded-2xl bg-red-500/20 border border-red-400/30 text-red-300 text-[11px] backdrop-blur-xl shadow-lg max-w-[min(calc(100vw-1.5rem),22rem)] text-center left-1/2 -translate-x-1/2 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:bottom-auto lg:top-4"
+          role="status"
+        >
           ⚠️ Microphone blocked — check browser permissions
         </div>
       )}
@@ -1184,7 +1187,7 @@ function QuestionPanel({
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
       {/* Question card */}
-      <div className="rounded-2xl px-4 py-3 border border-fuchsia-400/25 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/8 to-cyan-500/8 shrink-0 backdrop-blur-md">
+      <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 border border-fuchsia-400/25 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/8 to-cyan-500/8 shrink-0 backdrop-blur-md">
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -1199,7 +1202,7 @@ function QuestionPanel({
                     : "Physics"}
               </span>
             </div>
-            <h3 className="text-sm font-bold text-white leading-snug whitespace-pre-line">{displayedQuestion}</h3>
+            <h3 className="text-[13px] sm:text-sm font-bold text-white leading-snug whitespace-pre-line break-words">{displayedQuestion}</h3>
           </div>
           <button
             onClick={() => setShowContext(!showContext)}
@@ -1215,8 +1218,8 @@ function QuestionPanel({
         )}
       </div>
 
-      {/* Canvas / media area */}
-      <div className="relative flex-1 rounded-2xl overflow-hidden border border-white/8 bg-black min-h-0">
+      {/* Canvas / media area — guaranteed visible region on small screens (nothing may overlay this column) */}
+      <div className="relative flex-1 rounded-2xl overflow-hidden border border-white/8 bg-black min-h-0 max-lg:min-h-[min(42svh,340px)] max-lg:flex-shrink-0">
         {/* Persistent canvas — streams to AI. Visible for satellite, hidden for gif */}
         <canvas
           ref={canvasRef}
@@ -1633,7 +1636,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   // Thank You screen
   if (isFinished) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center relative overflow-hidden bg-[#060810]">
+      <div className="min-h-[100dvh] h-[100dvh] flex flex-col items-center justify-center relative overflow-hidden bg-[#060810]">
         <div className="pointer-events-none fixed inset-0 -z-10">
           <div className="absolute top-[-5%] left-[5%] w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px] animate-float" />
           <div className="absolute bottom-[-5%] right-[5%] w-[400px] h-[400px] rounded-full bg-cyan-500/10 blur-[100px] animate-float-delayed" />
@@ -1670,7 +1673,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   }
 
   return (
-    <div className="h-screen flex flex-col relative overflow-hidden">
+    <div className="min-h-[100dvh] h-[100dvh] flex flex-col relative overflow-hidden">
       {/* Ambient neon background */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute top-[-5%] left-[5%] w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px] animate-float" />
@@ -1679,7 +1682,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
       </div>
 
       {/* Header with gamification score */}
-      <header className="glass border-b border-white/5 px-4 py-2 flex items-center justify-between shrink-0 z-10">
+      <header className="glass border-b border-white/5 px-3 py-1.5 sm:px-4 sm:py-2 flex items-center justify-between shrink-0 z-10 relative">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-fuchsia-500/40 to-cyan-500/40 border border-fuchsia-400/40 flex items-center justify-center shadow-lg shadow-fuchsia-500/30">
             <span className="text-sm">⚡</span>
@@ -1746,19 +1749,19 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           </div>
 
           {/* Central content */}
-          <div className="relative flex-1 flex flex-col items-center justify-center p-8">
+          <div className="relative flex-1 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto overscroll-contain">
             {/* Glowing title */}
-            <div className="mb-12 text-center">
-              <h1 className="text-5xl md:text-7xl font-black bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-4 animate-pulse" style={{ animationDuration: '3s' }}>
+            <div className="mb-6 sm:mb-12 text-center px-2">
+              <h1 className="text-3xl sm:text-5xl md:text-7xl font-black bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 sm:mb-4 animate-pulse" style={{ animationDuration: '3s' }}>
                 AI Interview
               </h1>
-              <p className="text-lg md:text-xl text-white/60 font-light tracking-wider">Gyan Vihar University</p>
+              <p className="text-base sm:text-lg md:text-xl text-white/60 font-light tracking-wider">Gyan Vihar University</p>
             </div>
 
             {/* Avatar connection system */}
-            <div className="relative mb-12">
+            <div className="relative mb-6 sm:mb-12 w-full max-w-[min(100%,28rem)] sm:max-w-none">
               {/* Connection lines */}
-              <svg className="absolute inset-0 w-[400px] h-[200px] -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 pointer-events-none">
+              <svg className="absolute inset-0 w-full max-w-[400px] h-[200px] -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 pointer-events-none hidden sm:block">
                 <defs>
                   <linearGradient id="connection" x1="0%" y1="0%" x2="100%" y2="0%">
                     <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
@@ -1779,13 +1782,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               </svg>
 
               {/* Avatar cards */}
-              <div className="grid grid-cols-2 gap-16 relative z-10">
+              <div className="grid grid-cols-2 gap-4 sm:gap-10 md:gap-16 relative z-10 justify-items-center">
                 {/* Human Avatar */}
-                <div className="relative group">
+                <div className="relative group w-full max-w-[9.5rem] sm:max-w-[14rem] md:max-w-none">
                   {/* Glow effect */}
-                  <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s' }} />
+                  <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s' }} />
                   
-                  <div className="relative glass backdrop-blur-xl rounded-full p-8 border border-cyan-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:rotate-3 w-64 h-64 flex flex-col items-center justify-center">
+                  <div className="relative glass backdrop-blur-xl rounded-full p-4 sm:p-8 border border-cyan-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:rotate-3 aspect-square w-full max-w-[11rem] sm:max-w-[16rem] md:w-64 md:h-64 md:max-w-none flex flex-col items-center justify-center mx-auto">
                     {/* Animated background */}
                     <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/10 to-blue-600/10 animate-pulse" style={{ animationDuration: '3s' }} />
                     
@@ -1803,8 +1806,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                         <HumanAvatar state={ended ? "ended" : avatarState.human} />
                       </div>
                       <div className="text-center">
-                        <h3 className="text-xl font-bold text-cyan-100 mb-1">{name}</h3>
-                        <p className="text-sm text-cyan-300/70 font-medium">
+                        <h3 className="text-sm sm:text-xl font-bold text-cyan-100 mb-0.5 sm:mb-1 truncate max-w-[9rem] sm:max-w-none">{name}</h3>
+                        <p className="text-[10px] sm:text-sm text-cyan-300/70 font-medium">
                           {avatarState.human === "speaking" ? "🎤 Speaking" : "👂 Listening"}
                         </p>
                       </div>
@@ -1813,11 +1816,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                 </div>
 
                 {/* AI Avatar */}
-                <div className="relative group">
+                <div className="relative group w-full max-w-[9.5rem] sm:max-w-[14rem] md:max-w-none">
                   {/* Glow effect */}
-                  <div className="absolute -inset-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s', animationDelay: '2s' }} />
+                  <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s', animationDelay: '2s' }} />
                   
-                  <div className="relative glass backdrop-blur-xl rounded-full p-8 border border-fuchsia-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:-rotate-3 w-64 h-64 flex flex-col items-center justify-center">
+                  <div className="relative glass backdrop-blur-xl rounded-full p-4 sm:p-8 border border-fuchsia-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:-rotate-3 aspect-square w-full max-w-[11rem] sm:max-w-[16rem] md:w-64 md:h-64 md:max-w-none flex flex-col items-center justify-center mx-auto">
                     {/* Animated background */}
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10 animate-pulse" style={{ animationDuration: '3s', animationDelay: '1s' }} />
                     
@@ -1835,8 +1838,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                         <AIAvatar state={ended ? "ended" : avatarState.ai} />
                       </div>
                       <div className="text-center">
-                        <h3 className="text-xl font-bold text-fuchsia-100 mb-1">AI Interviewer</h3>
-                        <p className="text-sm text-fuchsia-300/70 font-medium">
+                        <h3 className="text-sm sm:text-xl font-bold text-fuchsia-100 mb-0.5 sm:mb-1">AI Interviewer</h3>
+                        <p className="text-[10px] sm:text-sm text-fuchsia-300/70 font-medium">
                           {avatarState.ai === "speaking" ? "🎤 Speaking" : avatarState.ai === "thinking" ? "🤔 Thinking" : "👂 Listening"}
                         </p>
                       </div>
@@ -1859,14 +1862,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           </div>
         </div>
       ) : (
-        // Question phase: normal layout
-        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_380px] gap-2 p-2 overflow-hidden min-h-0">
-
+        // Question phase: primary column gets all flexible height; transcript sits below on mobile (never overlays).
+        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_380px] gap-2 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-hidden min-h-0">
           {/* Question + Canvas panel */}
-          <section className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
+          <section className="glass rounded-2xl flex flex-col border border-white/8 flex-1 min-h-0 isolate relative z-[1] overflow-x-hidden overflow-y-auto lg:overflow-hidden touch-pan-y">
             {/* Question tabs — display only, no student navigation */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/5 shrink-0">
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5 -mb-0.5 touch-pan-x [scrollbar-width:thin]">
                 {QUESTIONS.map((q, i) => (
                   <div
                     key={q.id}
@@ -1948,11 +1950,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
             )}
           </section>
 
-          {/* AI Panel with dual avatars */}
-          <aside className="hidden lg:flex flex-col gap-2 min-h-0 overflow-hidden">
+          {/* AI panel + transcript: side column on lg; below question stack on mobile with capped height — does not cover canvas */}
+          <aside className="flex flex-col gap-2 min-h-0 overflow-hidden shrink-0 max-lg:max-h-[min(32svh,280px)] lg:max-h-none lg:h-full lg:min-h-0 relative z-0">
 
           {/* Dual Avatar Cards */}
-          <div className="grid grid-cols-2 gap-2 shrink-0">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2 shrink-0">
             {/* Human Avatar - Cyan */}
             <div className="glass rounded-2xl px-2 py-2 flex flex-col items-center gap-1 border border-cyan-400/20 relative overflow-hidden">
               <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700"
@@ -1997,8 +1999,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
 
           {/* Transcript - hidden during introduction */}
           {!isIntroductionPhase && (
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
+            <div className="flex-1 flex flex-col min-h-0 lg:min-h-[12rem]">
+              <div className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8 h-full max-lg:min-h-0">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-fuchsia-400/60 animate-pulse" />
