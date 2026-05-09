@@ -1914,38 +1914,37 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               />
             </div>
 
-            {/* Submit & Next / Finish button */}
-            {!frozen && (
+            {/* Submit & Next / Finish — Q2 parts 1–2: only the in-panel "Next Part" button (no footer duplicate) */}
+            {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
               <div className="px-3 pb-3 shrink-0">
-                {activeQuestionIdx < QUESTIONS.length - 1 ? (
-                  <button
-                    onClick={() => {
-                      if (question.id === 2 && q2Part < 3) return;
-                      navigateToNext();
-                    }}
-                    disabled={question.id === 2 && q2Part < 3}
-                    className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 flex items-center justify-center gap-2"
-                  >
-                    {question.id === 2 && q2Part < 3 ? `Complete Part ${q2Part} (Next Part below)` : "Submit & Next"}
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
-                      publishFinish(payload);
-                      setIsFinished(true);
-                    }}
-                    className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
-                  >
-                    Finish Interview
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => navigateToNext()}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 flex items-center justify-center gap-2"
+                >
+                  Submit & Next
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
+              <div className="px-3 pb-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
+                    publishFinish(payload);
+                    setIsFinished(true);
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
+                >
+                  Finish Interview
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
               </div>
             )}
           </section>
