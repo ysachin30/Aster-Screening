@@ -248,6 +248,9 @@ async def entrypoint(ctx: JobContext):
     transcript_lines: list[str] = []
     active_q: dict[str, object] = {"qid": None, "part": None}
     interview_finished: dict[str, bool] = {"value": False}
+    stop_event = asyncio.Event()
+    finalize_lock = asyncio.Lock()
+    finalized: dict[str, bool] = {"value": False}
 
     def _line_prefix() -> str:
         qid = active_q.get("qid")
@@ -261,6 +264,38 @@ async def entrypoint(ctx: JobContext):
         r"\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me)\b",
         flags=re.IGNORECASE,
     )
+
+    async def _finalize_and_post(reason: str) -> None:
+        async with finalize_lock:
+            if finalized["value"]:
+                return
+            finalized["value"] = True
+
+        logger.info("Finalizing interview (%s)", reason)
+        try:
+            await session.aclose()
+        except Exception as e:
+            logger.warning("session close during finalize raised: %s", e)
+
+        duration_secs = int(time.time() - session_started_at)
+        started_iso = datetime.fromtimestamp(session_started_at, tz=timezone.utc).isoformat()
+        completed_iso = datetime.now(timezone.utc).isoformat()
+
+        transcript = "\n".join(transcript_lines)
+        logger.info("--- TRANSCRIPT (%d lines) ---", len(transcript_lines))
+        for line in transcript_lines:
+            logger.info("  %s", line)
+
+        graded = await _grade(transcript, google_key)
+        await _post_report(
+            student_id=student_identity,
+            room=ctx.room.name,
+            transcript_full=transcript,
+            graded=graded,
+            started_at=started_iso,
+            completed_at=completed_iso,
+            duration_secs=duration_secs,
+        )
 
     @session.on("user_speech_committed")
     def on_user_speech(ev) -> None:
@@ -305,11 +340,13 @@ async def entrypoint(ctx: JobContext):
 
         if finish:
             interview_finished["value"] = True
+            stop_event.set()
             notice = "The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
             try:
                 session.generate_reply(instructions=notice)
             except Exception as e:
                 logger.warning("Could not inject finish notice: %s", e)
+            asyncio.create_task(_finalize_and_post("finish_signal"))
             return
 
         draw_hint = (
@@ -382,6 +419,17 @@ async def entrypoint(ctx: JobContext):
             # Fallback if already on loop thread
             _schedule()
 
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(*args, **kwargs) -> None:
+        logger.info("participant_disconnected event received — finalizing")
+        stop_event.set()
+        def _schedule_finalize() -> None:
+            asyncio.create_task(_finalize_and_post("participant_disconnected"))
+        try:
+            loop.call_soon_threadsafe(_schedule_finalize)
+        except Exception:
+            _schedule_finalize()
+
     logger.info("Starting AgentSession…")
     session_started_at = time.time()
     await session.start(agent, room=ctx.room)
@@ -397,31 +445,19 @@ async def entrypoint(ctx: JobContext):
     except Exception as e:
         logger.warning("Could not trigger initial greeting: %s", e)
 
-    await asyncio.sleep(INTERVIEW_SECONDS)
-    logger.info("✓ Timer elapsed — closing session")
-
-    await session.aclose()
-
-    duration_secs = int(time.time() - session_started_at)
-    started_iso = datetime.fromtimestamp(session_started_at, tz=timezone.utc).isoformat()
-    completed_iso = datetime.now(timezone.utc).isoformat()
-
-    # Grade & post rich report
-    transcript = "\n".join(transcript_lines)
-    logger.info("--- TRANSCRIPT (%d lines) ---", len(transcript_lines))
-    for line in transcript_lines:
-        logger.info("  %s", line)
-
-    graded = await _grade(transcript, google_key)
-    await _post_report(
-        student_id=student_identity,
-        room=ctx.room.name,
-        transcript_full=transcript,
-        graded=graded,
-        started_at=started_iso,
-        completed_at=completed_iso,
-        duration_secs=duration_secs,
-    )
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=INTERVIEW_SECONDS)
+        logger.info("Stop event set before timeout — waiting for finalize task")
+    except asyncio.TimeoutError:
+        logger.info("✓ Timer elapsed — finalizing session")
+        await _finalize_and_post("timer_elapsed")
+    except asyncio.CancelledError:
+        logger.warning("entrypoint cancelled — forcing finalize before exit")
+        await asyncio.shield(_finalize_and_post("entrypoint_cancelled"))
+        raise
+    finally:
+        if not finalized["value"]:
+            await _finalize_and_post("entrypoint_finally")
 
 
 def _normalize_grade_payload(data: dict) -> dict:

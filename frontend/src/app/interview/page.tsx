@@ -1812,7 +1812,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         </div>
       ) : (
         // Question phase: normal layout
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-2 p-2 overflow-hidden min-h-0" style={{ gridTemplateRows: "minmax(0, 1fr)" }}>
+        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_380px] gap-2 p-2 overflow-hidden min-h-0">
 
           {/* Question + Canvas panel */}
           <section className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8">
@@ -1901,7 +1901,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
           </section>
 
           {/* AI Panel with dual avatars */}
-          <aside className="flex flex-col gap-2 min-h-0 overflow-hidden">
+          <aside className="hidden lg:flex flex-col gap-2 min-h-0 overflow-hidden">
 
           {/* Dual Avatar Cards */}
           <div className="grid grid-cols-2 gap-2 shrink-0">
