@@ -171,7 +171,7 @@ Return ONLY valid minified JSON with this exact shape:
 
 Transcript:
 ---
-{transcript}
+<<<GV_TRANSCRIPT>>>
 ---
 """
 
@@ -196,24 +196,24 @@ async def entrypoint(ctx: JobContext):
     student_identity = metadata.get("studentId", ctx.room.name)
     questions: list[dict] = metadata.get("questions") or []
 
-    # Fallback: build a single-question list from the legacy fields if `questions` is empty
+    # Fallback: single legacy question field only if no `questions` array was dispatched
     if not questions:
-        legacy_q = metadata.get("questionText", "")
-        legacy_ctx = metadata.get("questionContext", "")
+        legacy_q = (metadata.get("questionText") or "").strip()
+        legacy_ctx = metadata.get("questionContext", "") or ""
         legacy_hints = metadata.get("questionHints", []) or []
-        if not legacy_q:
-            legacy_q = (
-                "You are planning a traffic system for a new human colony on Mars. "
-                "There are no roads yet. What is the FIRST problem you would solve?"
+        if legacy_q:
+            questions = [{
+                "id": 1,
+                "kind": "text",
+                "question": legacy_q,
+                "context": legacy_ctx,
+                "hints": legacy_hints,
+                "answer": "",
+            }]
+        else:
+            logger.warning(
+                "No interview questions in dispatch metadata (questions[] empty, questionText blank)."
             )
-        questions = [{
-            "id": 1,
-            "kind": "text",
-            "question": legacy_q,
-            "context": legacy_ctx,
-            "hints": legacy_hints,
-            "answer": "",
-        }]
 
     logger.info("Student from metadata: %s (%s)", student_name, student_identity)
     logger.info("Loaded %d question(s) for the interview", len(questions))
@@ -455,6 +455,72 @@ async def entrypoint(ctx: JobContext):
             await _finalize_and_post("entrypoint_finally")
 
 
+def _gemini_response_text(resp: object) -> str:
+    """google.generativeai often exposes `.text`, but blocked / multi-part replies need candidate traversal."""
+    try:
+        direct = getattr(resp, "text", None)
+        if isinstance(direct, str) and direct.strip():
+            return direct.strip()
+    except Exception as e:
+        logger.debug("grading: resp.text raised or empty: %s", e)
+
+    chunks: list[str] = []
+    for cand in getattr(resp, "candidates", None) or []:
+        fr = getattr(cand, "finish_reason", None)
+        if fr is not None and "SAFETY" in str(fr).upper():
+            logger.warning("grading: candidate finish_reason=%s (may be blocked)", fr)
+        content = getattr(cand, "content", None)
+        if not content:
+            continue
+        for part in getattr(content, "parts", None) or []:
+            txt = getattr(part, "text", None)
+            if txt:
+                chunks.append(txt)
+
+    fb = getattr(resp, "prompt_feedback", None)
+    if fb is not None:
+        br = getattr(fb, "block_reason", None)
+        if br:
+            logger.warning("grading: prompt_feedback.block_reason=%s", br)
+
+    return "".join(chunks).strip()
+
+
+def _dict_or_parse_json(val: object) -> dict:
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str):
+        try:
+            parsed = json.loads(val.strip())
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _maybe_rescale_percent_to_ten(bucket: dict) -> dict:
+    """Treat mistaken 0-100 scales as 0-10 when all numeric values look like percentages."""
+    nums: list[float] = []
+    for v in bucket.values():
+        try:
+            x = float(v)
+            if math.isfinite(x):
+                nums.append(x)
+        except (TypeError, ValueError):
+            return bucket
+    if len(nums) < 2:
+        return bucket
+    if all(x > 10.0 for x in nums) and all(x <= 100.0 for x in nums):
+        out: dict = {}
+        for k, v in bucket.items():
+            try:
+                out[k] = float(v) / 10.0
+            except (TypeError, ValueError):
+                out[k] = v
+        return out
+    return bucket
+
+
 def _trim_transcript_for_grade(transcript: str, limit: int = 100_000) -> str:
     """Keep grading within context limits while preserving intro + latest answers."""
     if len(transcript) <= limit:
@@ -524,8 +590,10 @@ def _normalize_grade_payload(data: dict) -> dict:
                 outer = root.get(key)
                 root[key] = {**inner, **outer} if isinstance(outer, dict) else inner
 
-    ac = root.get("academic") if isinstance(root.get("academic"), dict) else {}
-    pe = root.get("personality") if isinstance(root.get("personality"), dict) else {}
+    ac = _dict_or_parse_json(root.get("academic"))
+    pe = _dict_or_parse_json(root.get("personality"))
+    ac = _maybe_rescale_percent_to_ten(ac)
+    pe = _maybe_rescale_percent_to_ten(pe)
     strengths = root.get("strengths") if isinstance(root.get("strengths"), list) else []
     improvements = root.get("improvements") if isinstance(root.get("improvements"), list) else []
 
@@ -571,55 +639,65 @@ async def _grade(transcript: str, api_key: str) -> dict:
         "improvements": [],
     }
 
-    trimmed = _trim_transcript_for_grade(transcript)
-    if not trimmed.strip():
-        return _normalize_grade_payload({**empty_err, "summary": "No transcript captured; cannot grade."})
-
-    preferred = (os.environ.get("GRADING_MODEL") or "").strip()
-    fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
-    models: list[str] = []
-    for m in [preferred, *fallbacks]:
-        if m and m not in models:
-            models.append(m)
-
     try:
-        import google.generativeai as genai
+        trimmed = _trim_transcript_for_grade(transcript)
+        if not trimmed.strip():
+            return _normalize_grade_payload({**empty_err, "summary": "No transcript captured; cannot grade."})
 
-        genai.configure(api_key=api_key)
-    except Exception as e:
-        logger.exception("grading: google.generativeai configure failed: %s", e)
-        return _normalize_grade_payload({**empty_err, "summary": f"grading error: {e}"})
+        # Never use str.format() — curly braces in student speech break templates and abort grading.
+        marker = "<<<GV_TRANSCRIPT>>>"
+        if marker not in GRADING_PROMPT:
+            logger.error("GRADING_PROMPT missing transcript marker %s", marker)
+            return _normalize_grade_payload({**empty_err, "summary": "Internal grading prompt misconfigured."})
+        prompt = GRADING_PROMPT.replace(marker, trimmed, 1)
 
-    prompt = GRADING_PROMPT.format(transcript=trimmed)
-    last_exc: Exception | None = None
+        preferred = (os.environ.get("GRADING_MODEL") or "").strip()
+        fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+        models: list[str] = []
+        for m in [preferred, *fallbacks]:
+            if m and m not in models:
+                models.append(m)
 
-    for model_name in models:
         try:
-            model = genai.GenerativeModel(
-                model_name,
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.25,
-                },
-            )
-            resp = model.generate_content(prompt)
-            raw_text = (getattr(resp, "text", None) or "").strip()
-            parsed = _extract_json_dict(raw_text)
-            if not parsed:
-                raise ValueError(f"empty or non-object JSON from model (preview={raw_text[:240]!r})")
-            logger.info("grading succeeded with model=%s", model_name)
-            return _normalize_grade_payload(parsed)
-        except Exception as e:
-            last_exc = e
-            logger.warning("grading failed for model=%s: %s", model_name, e)
+            import google.generativeai as genai
 
-    logger.exception("grading failed for all models; last error: %s", last_exc)
-    return _normalize_grade_payload(
-        {
-            **empty_err,
-            "summary": f"grading error (all models): {last_exc}",
-        }
-    )
+            genai.configure(api_key=api_key)
+        except Exception as e:
+            logger.exception("grading: google.generativeai configure failed: %s", e)
+            return _normalize_grade_payload({**empty_err, "summary": f"grading error: {e}"})
+
+        last_exc: Exception | None = None
+
+        for model_name in models:
+            try:
+                model = genai.GenerativeModel(
+                    model_name,
+                    generation_config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.25,
+                    },
+                )
+                resp = model.generate_content(prompt)
+                raw_text = _gemini_response_text(resp)
+                parsed = _extract_json_dict(raw_text)
+                if not parsed:
+                    raise ValueError(f"empty or non-object JSON from model (preview={raw_text[:240]!r})")
+                logger.info("grading succeeded with model=%s", model_name)
+                return _normalize_grade_payload(parsed)
+            except Exception as e:
+                last_exc = e
+                logger.warning("grading failed for model=%s: %s", model_name, e)
+
+        logger.exception("grading failed for all models; last error: %s", last_exc)
+        return _normalize_grade_payload(
+            {
+                **empty_err,
+                "summary": f"grading error (all models): {last_exc}",
+            }
+        )
+    except Exception as e:
+        logger.exception("grading unexpected failure: %s", e)
+        return _normalize_grade_payload({**empty_err, "summary": f"grading error: {e}"})
 
 
 async def _post_report(
