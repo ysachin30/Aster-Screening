@@ -1865,7 +1865,8 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         // Question phase: primary column gets all flexible height; transcript sits below on mobile (never overlays).
         <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_380px] gap-2 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-hidden min-h-0">
           {/* Question + Canvas panel */}
-          <section className="glass rounded-2xl flex flex-col border border-white/8 flex-1 min-h-0 isolate relative z-[1] overflow-x-hidden overflow-y-auto lg:overflow-hidden touch-pan-y">
+          <section className="glass rounded-2xl flex flex-col border border-white/8 flex-1 min-h-0 isolate relative z-[1] overflow-hidden touch-pan-y">
+            <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto lg:overflow-hidden flex flex-col">
             {/* Question tabs — display only, no student navigation */}
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/5 shrink-0">
               <div className="flex items-center gap-1 overflow-x-auto pb-0.5 -mb-0.5 touch-pan-x [scrollbar-width:thin]">
@@ -1895,7 +1896,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                   </div>
                 ))}
               </div>
-              <span className="text-[10px] text-white/25 hidden sm:flex items-center gap-1.5">
+              <span className="text-[10px] text-white/25 hidden sm:flex items-center gap-1.5 shrink-0">
                 <span className="w-1 h-1 rounded-full bg-fuchsia-400 animate-pulse" />
                 The AI sees what you see
               </span>
@@ -1913,10 +1914,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                 setQ2Part={setQ2Part}
               />
             </div>
+            </div>
 
-            {/* Submit & Next / Finish — Q2 parts 1–2: only the in-panel "Next Part" button (no footer duplicate) */}
+            {/* Pinned footer — outside scroll; Q2 parts 1–2 use in-panel Next Part only */}
             {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
-              <div className="px-3 pb-3 shrink-0">
+              <div className="px-3 pt-2 pb-3 shrink-0 border-t border-white/10 bg-[#0a0d18]/90 backdrop-blur-md">
                 <button
                   type="button"
                   onClick={() => navigateToNext()}
@@ -1930,7 +1932,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               </div>
             )}
             {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
-              <div className="px-3 pb-3 shrink-0">
+              <div className="px-3 pt-2 pb-3 shrink-0 border-t border-white/10 bg-[#0a0d18]/90 backdrop-blur-md">
                 <button
                   type="button"
                   onClick={() => {
@@ -1949,82 +1951,86 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
             )}
           </section>
 
-          {/* AI panel + transcript: side column on lg; below question stack on mobile with capped height — does not cover canvas */}
-          <aside className="flex flex-col gap-2 min-h-0 overflow-hidden shrink-0 max-lg:max-h-[min(32svh,280px)] lg:max-h-none lg:h-full lg:min-h-0 relative z-0">
-
-          {/* Dual Avatar Cards */}
-          <div className="grid grid-cols-2 gap-1.5 sm:gap-2 shrink-0">
-            {/* Human Avatar - Cyan */}
-            <div className="glass rounded-2xl px-2 py-2 flex flex-col items-center gap-1 border border-cyan-400/20 relative overflow-hidden">
-              <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700"
-                style={{
-                  background: avatarState.human === "speaking" ? "radial-gradient(circle at 50% 30%, rgba(0,240,255,0.3), transparent 60%)"
-                    : "radial-gradient(circle at 50% 30%, rgba(6,182,212,0.1), transparent 60%)",
-                }}
-              />
-              <HumanAvatar state={ended ? "ended" : avatarState.human} />
-              <div className="text-center space-y-0.5 relative z-10">
-                <p className="text-xs font-bold text-cyan-100">{name}</p>
-                <p className="text-[9px] font-medium text-cyan-300/70">
-                  {avatarState.human === "speaking" ? "Speaking..." : "Idle"}
-                </p>
-              </div>
-              {avatarState.human === "speaking" && !ended && (
-                <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-lg shadow-cyan-400" />
-              )}
-            </div>
-
-            {/* AI Avatar - Magenta */}
-            <div className="glass rounded-2xl px-2 py-2 flex flex-col items-center gap-1 border border-fuchsia-400/20 relative overflow-hidden">
-              <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700"
-                style={{
-                  background: avatarState.ai === "speaking" ? "radial-gradient(circle at 50% 30%, rgba(255,0,255,0.3), transparent 60%)"
-                    : avatarState.ai === "thinking" ? "radial-gradient(circle at 50% 30%, rgba(245,158,11,0.2), transparent 60%)"
-                    : "radial-gradient(circle at 50% 30%, rgba(176,38,255,0.1), transparent 60%)",
-                }}
-              />
-              <AIAvatar state={ended ? "ended" : avatarState.ai} />
-              <div className="text-center space-y-0.5 relative z-10">
-                <p className="text-xs font-bold text-fuchsia-100">AI</p>
-                <p className="text-[9px] font-medium text-fuchsia-300/70">
-                  {avatarState.ai === "speaking" ? "Speaking..." : avatarState.ai === "thinking" ? "Thinking..." : "Idle"}
-                </p>
-              </div>
-              {avatarState.ai === "speaking" && !ended && (
-                <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-fuchsia-400 animate-pulse shadow-lg shadow-fuchsia-400" />
-              )}
-            </div>
-          </div>
-
-          {/* Transcript - hidden during introduction */}
-          {!isIntroductionPhase && (
-            <div className="flex-1 flex flex-col min-h-0 lg:min-h-[12rem]">
-              <div className="glass rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8 h-full max-lg:min-h-0">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-fuchsia-400/60 animate-pulse" />
-                    <span className="text-xs font-medium text-white/50">Live Transcript</span>
+          {/* AI panel: mobile = avatars stacked + transcript beside (short strip); lg = avatars row + transcript below */}
+          <aside className="flex flex-col gap-2 min-h-0 overflow-hidden shrink-0 relative z-0 max-lg:max-h-[min(22svh,200px)] lg:max-h-none lg:h-full lg:min-h-0">
+            <div className="flex flex-row lg:flex-col gap-2 min-h-0 flex-1 min-w-0 items-stretch">
+              {/* Avatar column: vertical on mobile, two-up on lg */}
+              <div className="grid grid-flow-row grid-cols-1 auto-rows-min lg:grid-cols-2 lg:grid-flow-row gap-1 lg:gap-2 shrink-0 max-lg:w-[5.5rem] lg:w-auto">
+                {/* Human Avatar - Cyan */}
+                <div className="glass rounded-xl lg:rounded-2xl px-1 py-1 lg:px-2 lg:py-2 flex flex-col items-center gap-0.5 lg:gap-1 border border-cyan-400/20 relative max-lg:overflow-visible lg:overflow-hidden">
+                  <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700 rounded-xl lg:rounded-2xl"
+                    style={{
+                      background: avatarState.human === "speaking" ? "radial-gradient(circle at 50% 30%, rgba(0,240,255,0.3), transparent 60%)"
+                        : "radial-gradient(circle at 50% 30%, rgba(6,182,212,0.1), transparent 60%)",
+                    }}
+                  />
+                  <div className="flex items-center justify-center shrink-0 max-lg:scale-[0.48] max-lg:origin-center max-lg:-my-0.5">
+                    <HumanAvatar state={ended ? "ended" : avatarState.human} />
                   </div>
-                  {transcript.length > 0 && (
-                    <span className="text-[10px] text-white/25 px-2 py-0.5 rounded-full bg-white/5 border border-white/8">
-                      {transcript.length}
-                    </span>
+                  <div className="text-center space-y-0 relative z-10 max-lg:px-0.5">
+                    <p className="text-[8px] lg:text-xs font-bold text-cyan-100 truncate max-w-[5rem] lg:max-w-none">{name}</p>
+                    <p className="text-[7px] lg:text-[9px] font-medium text-cyan-300/70 leading-tight">
+                      {avatarState.human === "speaking" ? "Speaking" : "Idle"}
+                    </p>
+                  </div>
+                  {avatarState.human === "speaking" && !ended && (
+                    <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 lg:top-1 lg:right-1 lg:w-2 lg:h-2 rounded-full bg-cyan-400 animate-pulse shadow-lg shadow-cyan-400" />
                   )}
                 </div>
-                <TranscriptView entries={transcript} />
-              </div>
-            </div>
-          )}
 
-          {/* Ended card */}
-          {ended && (
-            <div className="rounded-2xl p-5 text-center animate-fade-up shrink-0 border border-pink-400/30 bg-gradient-to-br from-pink-500/10 to-purple-500/10">
-              <div className="text-3xl mb-2">🎓</div>
-              <p className="text-sm font-bold shimmer-text">Interview Complete</p>
-              <p className="text-xs text-white/40 mt-1.5 leading-relaxed">Generating your evaluation…</p>
+                {/* AI Avatar - Magenta */}
+                <div className="glass rounded-xl lg:rounded-2xl px-1 py-1 lg:px-2 lg:py-2 flex flex-col items-center gap-0.5 lg:gap-1 border border-fuchsia-400/20 relative max-lg:overflow-visible lg:overflow-hidden">
+                  <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700 rounded-xl lg:rounded-2xl"
+                    style={{
+                      background: avatarState.ai === "speaking" ? "radial-gradient(circle at 50% 30%, rgba(255,0,255,0.3), transparent 60%)"
+                        : avatarState.ai === "thinking" ? "radial-gradient(circle at 50% 30%, rgba(245,158,11,0.2), transparent 60%)"
+                        : "radial-gradient(circle at 50% 30%, rgba(176,38,255,0.1), transparent 60%)",
+                    }}
+                  />
+                  <div className="flex items-center justify-center shrink-0 max-lg:scale-[0.48] max-lg:origin-center max-lg:-my-0.5">
+                    <AIAvatar state={ended ? "ended" : avatarState.ai} />
+                  </div>
+                  <div className="text-center space-y-0 relative z-10">
+                    <p className="text-[8px] lg:text-xs font-bold text-fuchsia-100">AI</p>
+                    <p className="text-[7px] lg:text-[9px] font-medium text-fuchsia-300/70 leading-tight">
+                      {avatarState.ai === "speaking" ? "Speaking" : avatarState.ai === "thinking" ? "Thinking" : "Idle"}
+                    </p>
+                  </div>
+                  {avatarState.ai === "speaking" && !ended && (
+                    <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 lg:top-1 lg:right-1 lg:w-2 lg:h-2 rounded-full bg-fuchsia-400 animate-pulse shadow-lg shadow-fuchsia-400" />
+                  )}
+                </div>
+              </div>
+
+              {/* Transcript beside avatars on mobile */}
+              {!isIntroductionPhase && (
+                <div className="flex-1 flex flex-col min-h-0 min-w-0 lg:min-h-[12rem]">
+                  <div className="glass rounded-xl lg:rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8 h-full">
+                    <div className="flex items-center justify-between px-2 py-1.5 lg:px-3 lg:py-2 border-b border-white/5 shrink-0">
+                      <div className="flex items-center gap-1.5 lg:gap-2 min-w-0">
+                        <div className="w-1 h-1 lg:w-1.5 lg:h-1.5 rounded-full bg-fuchsia-400/60 animate-pulse shrink-0" />
+                        <span className="text-[10px] lg:text-xs font-medium text-white/50 truncate">Transcript</span>
+                      </div>
+                      {transcript.length > 0 && (
+                        <span className="text-[9px] lg:text-[10px] text-white/25 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/8 shrink-0">
+                          {transcript.length}
+                        </span>
+                      )}
+                    </div>
+                    <TranscriptView entries={transcript} />
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </aside>
+
+            {ended && (
+              <div className="rounded-xl lg:rounded-2xl p-3 lg:p-5 text-center animate-fade-up shrink-0 border border-pink-400/30 bg-gradient-to-br from-pink-500/10 to-purple-500/10 w-full">
+                <div className="text-2xl lg:text-3xl mb-1 lg:mb-2">🎓</div>
+                <p className="text-xs lg:text-sm font-bold shimmer-text">Interview Complete</p>
+                <p className="text-[10px] lg:text-xs text-white/40 mt-1 lg:mt-1.5 leading-relaxed">Generating your evaluation…</p>
+              </div>
+            )}
+          </aside>
         </div>
       )}
     </div>
