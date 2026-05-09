@@ -14,6 +14,7 @@ import Timer from "@/components/Timer";
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
 const GIF_URL = encodeURI("/q1.gif");
+const Q2_THEORY_GIF_URL = encodeURI("/this.gif");
 
 type AvatarState = "idle" | "speaking" | "listening" | "thinking" | "ended";
 
@@ -1159,12 +1160,14 @@ function QuestionPanel({
 
   const isSatellite = question.kind === "satellite";
   const isDiff = question.kind === "differentiability";
-  const isInteractive = isSatellite || isDiff;
   const isQ2 = question.id === 2;
   const part = q2Part ?? 1;
+  const isQ2TheoryPart = isQ2 && part === 1;
+  const isSatelliteInteractive = isSatellite && !isQ2TheoryPart;
+  const isInteractive = isSatelliteInteractive || isDiff;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
   const hidePresetVectors = isQ2;
-  const canAdvanceQ2Part = strokes.length > 0;
+  const canAdvanceQ2Part = part === 1 ? true : strokes.length > 0;
 
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
@@ -1208,7 +1211,7 @@ function QuestionPanel({
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           className={
-            isSatellite
+            isSatelliteInteractive
               ? `w-full h-full touch-none ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
               : isDiff
                 ? "w-full h-full touch-none cursor-grab active:cursor-grabbing"
@@ -1217,7 +1220,7 @@ function QuestionPanel({
         />
 
         {/* Floating Erase button when satellite + has a stroke */}
-        {isSatellite && strokes.length > 0 && (
+        {isSatelliteInteractive && strokes.length > 0 && (
           <button
             onClick={clearStroke}
             disabled={frozen}
@@ -1234,6 +1237,12 @@ function QuestionPanel({
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={GIF_URL} alt="visual cue" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
+              </>
+            ) : isQ2TheoryPart ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={Q2_THEORY_GIF_URL} alt="Q2 part 1 theory visual" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
               </>
             ) : (
@@ -1255,7 +1264,7 @@ function QuestionPanel({
       </div>
 
       {/* Action buttons */}
-      {isSatellite && (
+      {isSatelliteInteractive && (
         <div className="flex gap-2 shrink-0">
           <button
             onClick={toggleDrawMode}
@@ -1320,6 +1329,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [q2Part, setQ2Part] = useState(1);
+  const earlyClosePattern = /\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me)\b/i;
   const englishLike = useCallback((text: string) => {
     const cleaned = text.replace(/\s+/g, " ").trim();
     if (!cleaned) return false;
@@ -1328,6 +1338,18 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     if (alphaMatches.length === 0) return false;
     return latinMatches.length / alphaMatches.length >= 0.65;
   }, []);
+  const shouldDropAiTranscriptLine = useCallback((text: string) => {
+    const t = text.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!t) return true;
+    if (
+      t.includes("great! now let's move to the first question") ||
+      t.includes("let's move to the first question") ||
+      t.includes("move to the first question") ||
+      t.startsWith("this is question 1")
+    ) return true;
+    if (!isFinished && earlyClosePattern.test(t)) return true;
+    return false;
+  }, [isFinished]);
 
   useEffect(() => {
     if (question.id !== 2) setQ2Part(1);
@@ -1471,10 +1493,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
         const isFinal = seg.final ?? seg.isFinal ?? true;
         // Only store transcript once question phase begins
-        if (!isIntroductionPhase && englishLike(text)) {
+        if (!isIntroductionPhase) {
           const now = Date.now();
           const inGrace = introEndedAtRef.current > 0 && now - introEndedAtRef.current < 2500;
-          if (!(inGrace && who === "user")) {
+          const aiAllowed = who === "ai" ? englishLike(text) && !shouldDropAiTranscriptLine(text) : true;
+          if (!(inGrace && who === "user") && aiAllowed) {
             upsertTranscript(who, text, segId, isFinal);
           }
         }
@@ -1505,9 +1528,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         if (json.type === "transcript" || json.segment || json.text) {
           const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
           const text = json.text ?? json.segment?.text ?? "";
-          if (!isIntroductionPhase && englishLike(text)) {
+          if (!isIntroductionPhase) {
             const inGrace = introEndedAtRef.current > 0 && Date.now() - introEndedAtRef.current < 2500;
+            const aiAllowed = who === "ai" ? englishLike(text) && !shouldDropAiTranscriptLine(text) : true;
             if (inGrace && who === "user") return;
+            if (!aiAllowed) return;
             upsertTranscript(who, text, `data-${Date.now()}`, true);
           }
         }
@@ -1531,6 +1556,7 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     ended,
     upsertTranscript,
     englishLike,
+    shouldDropAiTranscriptLine,
     isIntroductionPhase,
     question.id,
     question.kind,
