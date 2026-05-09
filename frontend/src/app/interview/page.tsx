@@ -15,6 +15,7 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
 const GIF_URL = encodeURI("/q1.gif");
 const Q2_THEORY_GIF_URL = encodeURI("/this.gif");
+const Q4_BRIDGE_GIF_URL = encodeURI("/thisisbridge.gif");
 
 type AvatarState = "idle" | "speaking" | "listening" | "thinking" | "ended";
 
@@ -104,7 +105,8 @@ const QUESTIONS: Question[] = [
   {
     id: 4,
     kind: "text",
-    question: "A cube is painted on all six faces and then cut into 27 equal smaller cubes. How many small cubes will have exactly two painted faces?",
+    question:
+      "A cube is painted on all six faces and then cut into 27 equal smaller cubes. How many small cubes will have exactly two painted faces?",
     context:
       "A cube divided into 27 cubes means:\n3×3×3\n\nExactly two painted faces occur on edge cubes excluding corners.",
     hints: [],
@@ -114,20 +116,29 @@ const QUESTIONS: Question[] = [
   {
     id: 5,
     kind: "text",
-    question: "How does electric current propagate through a conductor if electrons move so slowly?",
-    context:
-      "Electric current is the rate of flow of charge.\n" +
-      "In metallic conductors:\n" +
-      "• Free electrons move randomly\n" +
-      "• An electric field causes them to drift slowly\n" +
-      "• The actual drift speed of electrons is extremely small.",
+    question:
+      "Four people need to cross a bridge at night.\n\n"
+      + "Each person walks at a different speed:\n"
+      + "A = 1 minute\n"
+      + "B = 2 minutes\n"
+      + "C = 5 minutes\n"
+      + "D = 10 minutes\n\n"
+      + "When two people cross together, they move at the slower person's speed.\n\n"
+      + "The torch must always be carried during a crossing.\n\n"
+      + "What is the minimum total time required for everyone to cross?",
+    context: "",
     hints: [],
     answer:
-      "Although individual electrons move very slowly, the electric field propagates through the conductor at a significant fraction of the speed of light.\n" +
-      "When a switch is turned on:\n" +
-      "• The electric field is established throughout the conductor very rapidly\n" +
-      "• Electrons throughout the wire begin drifting almost simultaneously\n" +
-      "• Energy is transferred rapidly through the electromagnetic field",
+      "PRIVATE RUBRIC (never reveal hints/solution aloud).\n\n"
+      + "Hint for evaluator only — It is not always optimal for the fastest person to escort everyone. "
+      + "They have one torch, and the bridge can hold at most two people at a time.\n\n"
+      + "Optimal solution is 17 minutes:\n"
+      + "A + B cross → 2 min\n"
+      + "A returns → 1 min\n"
+      + "C + D cross → 10 min\n"
+      + "B returns → 2 min\n"
+      + "A + B cross again → 2 min\n"
+      + "Total: 2+1+10+2+2 = 17.",
   },
 ];
 
@@ -1161,6 +1172,7 @@ function QuestionPanel({
   const isSatellite = question.kind === "satellite";
   const isDiff = question.kind === "differentiability";
   const isQ2 = question.id === 2;
+  const isQ4BridgeGif = question.id === 4;
   const part = q2Part ?? 1;
   const isQ2TheoryPart = isQ2 && part === 1;
   const isSatelliteInteractive = isSatellite && !isQ2TheoryPart;
@@ -1180,7 +1192,11 @@ function QuestionPanel({
                 Q{question.id}
               </span>
               <span className="text-[9px] text-white/30">
-                {question.kind === "differentiability" ? "Mathematics" : "Physics"}
+                {question.kind === "differentiability"
+                  ? "Mathematics"
+                  : question.id === 5
+                    ? "Logic puzzle"
+                    : "Physics"}
               </span>
             </div>
             <h3 className="text-sm font-bold text-white leading-snug whitespace-pre-line">{displayedQuestion}</h3>
@@ -1243,6 +1259,12 @@ function QuestionPanel({
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={Q2_THEORY_GIF_URL} alt="Q2 part 1 theory visual" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
+              </>
+            ) : isQ4BridgeGif ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
               </>
             ) : (
@@ -1492,11 +1514,11 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
         const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
         const isFinal = seg.final ?? seg.isFinal ?? true;
-        // Only store transcript once question phase begins
-        if (!isIntroductionPhase) {
+        // Only store transcript once question phase begins; English-only (student + AI).
+        if (!isIntroductionPhase && englishLike(text)) {
           const now = Date.now();
           const inGrace = introEndedAtRef.current > 0 && now - introEndedAtRef.current < 2500;
-          const aiAllowed = who === "ai" ? englishLike(text) && !shouldDropAiTranscriptLine(text) : true;
+          const aiAllowed = who !== "ai" || !shouldDropAiTranscriptLine(text);
           if (!(inGrace && who === "user") && aiAllowed) {
             upsertTranscript(who, text, segId, isFinal);
           }
@@ -1528,9 +1550,9 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         if (json.type === "transcript" || json.segment || json.text) {
           const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
           const text = json.text ?? json.segment?.text ?? "";
-          if (!isIntroductionPhase) {
+          if (!isIntroductionPhase && englishLike(text)) {
             const inGrace = introEndedAtRef.current > 0 && Date.now() - introEndedAtRef.current < 2500;
-            const aiAllowed = who === "ai" ? englishLike(text) && !shouldDropAiTranscriptLine(text) : true;
+            const aiAllowed = who !== "ai" || !shouldDropAiTranscriptLine(text);
             if (inGrace && who === "user") return;
             if (!aiAllowed) return;
             upsertTranscript(who, text, `data-${Date.now()}`, true);

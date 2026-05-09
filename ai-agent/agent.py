@@ -93,19 +93,12 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         if ans:
             parts.append(f"Expected answer (PRIVATE rubric — never read aloud):\n{ans}\n")
         if kind == "text" or kind == "gif":
-            if qid == 1:
-                parts.append(
-                    f"SCREEN NARRATION for Q{qid}: When the student is on this question, say: "
-                    "'On your screen you can see a visual scenario. Here is the question: "
-                    "A book is placed on a table and remains at rest. What causes the normal force acting on the book?' "
-                    "Then probe their reasoning about what causes the normal force.\n"
-                )
-            else:
-                parts.append(
-                    f"SCREEN NARRATION for Q{qid}: When the student is on this question, describe what they see "
-                    "('On your screen you can see...') and then ask the question naturally. "
-                    "Reference any visual on screen to anchor your question.\n"
-                )
+            parts.append(
+                f"SCREEN NARRATION for Q{qid}: When the student is on this question, briefly anchor what they see "
+                "('On your screen you can see...'). "
+                "Do NOT repeat the full question text yourself — the system already dictates it verbatim when Q opens; "
+                "after it is read once, probe their reasoning only.\n"
+            )
         if kind == "satellite":
             parts.append(
                 f"SCREEN NARRATION for Q{qid}: Q2 has three parts shown one at a time on screen. "
@@ -133,7 +126,8 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         "\nStart by greeting the student warmly by name. "
         "Begin with a 2-minute warm-up conversation to assess confidence and communication. "
         "After 4-6 exchanges (about 2 minutes), transition to the questions: 'Great! Now let's move to the first question.' "
-        "Then describe what they see on screen for Q1 and ask the first question."
+        "For Q1, give only a short on-screen anchor; do not re-read the full question aloud yourself "
+        "(the system reads QUESTION TEXT verbatim once when the question opens)."
     )
     return "".join(parts)
 
