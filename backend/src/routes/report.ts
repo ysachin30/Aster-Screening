@@ -34,16 +34,16 @@ function deriveRollups(
 
   const overall_score = 0.55 * academic_score + 0.45 * personality_score;
   const band: "A" | "B" | "C" | "D" =
-    overall_score >= 85 ? "A" : overall_score >= 70 ? "B" : overall_score >= 50 ? "C" : "D";
-  const criticalFail = academic_score < 50 || communication < 5 || comprehension < 5;
+    overall_score >= 85 ? "A" : overall_score >= 68 ? "B" : overall_score >= 45 ? "C" : "D";
+  const criticalFail = academic_score < 45 || communication < 4 || comprehension < 4;
   const shortlist_status: "shortlist" | "borderline" | "reject" =
     criticalFail || band === "D" ? "reject" : band === "C" ? "borderline" : "shortlist";
 
   const parts: string[] = [];
   if (criticalFail) {
-    if (academic_score < 50) parts.push("academic below 50");
-    if (communication < 5) parts.push("communication below 5");
-    if (comprehension < 5) parts.push("comprehension below 5");
+    if (academic_score < 45) parts.push("academic below 45");
+    if (communication < 4) parts.push("communication below 4");
+    if (comprehension < 4) parts.push("comprehension below 4");
   }
   const decision_reason =
     shortlist_status === "reject"

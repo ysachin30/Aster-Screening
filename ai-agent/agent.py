@@ -135,6 +135,10 @@ The transcript uses segment tags like [intro], [Q1], [Q2-P1] so you know which p
 
 Score the student 0-10 on EACH sub-metric below. Use the full transcript; weigh question-phase answers
 more heavily than small talk in [intro], but the intro still informs communication and confidence.
+Do not require textbook wording. If a student's answer is materially correct, concise, or phrased simply,
+score the demonstrated understanding rather than penalizing style.
+Award partial credit generously for answers that capture the core idea with minor omissions.
+Reserve very low scores for answers that are clearly wrong, contradictory, or effectively absent.
 
 ACADEMIC (0-10 each):
 - correctness: Final answers vs expected reasoning (use private rubric cues in the dialogue; do not invent facts).
@@ -185,6 +189,9 @@ You are given:
 Score carefully and do NOT punish the student just because transcription is imperfect.
 If the transcript is sparse but activity metadata strongly suggests the student did respond,
 be conservative and set needs_review=true rather than forcing low scores.
+Do not require textbook wording. If the student communicates the core idea correctly,
+even briefly or informally, award meaningful partial credit instead of treating it as a fail.
+Reserve very low scores for answers that are clearly wrong, contradictory, or missing.
 
 Return ONLY valid minified JSON with this exact shape:
 {
@@ -228,6 +235,9 @@ AUDIO_FALLBACK_PROMPT = """You are grading one interview question segment.
 Use the provided short audio clip plus any partial transcript and activity metadata.
 The transcript may be incomplete or missing. Do not force zero scores just because the text is sparse.
 If the audio is still too weak to grade confidently, set needs_review=true.
+Do not require textbook wording. If the student communicates the core idea correctly,
+even briefly or informally, award meaningful partial credit instead of treating it as a fail.
+Reserve very low scores for answers that are clearly wrong, contradictory, or missing.
 
 Return ONLY valid minified JSON with this exact shape:
 {
