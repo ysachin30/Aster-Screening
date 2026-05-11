@@ -9,7 +9,7 @@ import { reportRouter } from "./routes/report.js";
 
 const app = express();
 app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "12mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/api", tokenRouter);

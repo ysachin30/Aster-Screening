@@ -9,6 +9,7 @@ Pipeline: LiveKit mic → AgentSession(RealtimeModel) → LiveKit speaker
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import math
@@ -181,6 +182,99 @@ Transcript:
 ---
 """
 
+QUESTION_GRADING_PROMPT = """You are grading one interview question segment for engineering admissions.
+
+You are given:
+- the visible question text for this segment
+- the private expected answer/rubric
+- the transcript excerpt for just this question or part
+- activity metadata from the live session
+- transcript coverage diagnostics
+
+Score carefully and do NOT punish the student just because transcription is imperfect.
+If the transcript is sparse but activity metadata strongly suggests the student did respond,
+be conservative and set needs_review=true rather than forcing low scores.
+
+Return ONLY valid minified JSON with this exact shape:
+{
+  "academic": {
+    "correctness": <number>,
+    "understanding": <number>,
+    "reasoning_depth": <number>
+  },
+  "personality": {
+    "confidence": <number>,
+    "communication": <number>,
+    "curiosity": <number>,
+    "exploratory_thinking": <number>,
+    "comprehension": <number>
+  },
+  "summary": "<1-2 sentences>",
+  "needs_review": <boolean>
+}
+
+Question key: <<<GV_SEGMENT_KEY>>>
+Question text:
+<<<GV_SEGMENT_QUESTION>>>
+
+Expected answer / rubric (private):
+<<<GV_SEGMENT_EXPECTED>>>
+
+Transcript excerpt:
+---
+<<<GV_SEGMENT_TRANSCRIPT>>>
+---
+
+Activity JSON:
+<<<GV_SEGMENT_ACTIVITY>>>
+
+Coverage JSON:
+<<<GV_SEGMENT_COVERAGE>>>
+"""
+
+AUDIO_FALLBACK_PROMPT = """You are grading one interview question segment.
+
+Use the provided short audio clip plus any partial transcript and activity metadata.
+The transcript may be incomplete or missing. Do not force zero scores just because the text is sparse.
+If the audio is still too weak to grade confidently, set needs_review=true.
+
+Return ONLY valid minified JSON with this exact shape:
+{
+  "academic": {
+    "correctness": <number>,
+    "understanding": <number>,
+    "reasoning_depth": <number>
+  },
+  "personality": {
+    "confidence": <number>,
+    "communication": <number>,
+    "curiosity": <number>,
+    "exploratory_thinking": <number>,
+    "comprehension": <number>
+  },
+  "summary": "<1-2 sentences>",
+  "needs_review": <boolean>
+}
+
+Question key: <<<GV_SEGMENT_KEY>>>
+Question text:
+<<<GV_SEGMENT_QUESTION>>>
+
+Expected answer / rubric (private):
+<<<GV_SEGMENT_EXPECTED>>>
+
+Partial transcript:
+---
+<<<GV_SEGMENT_TRANSCRIPT>>>
+---
+
+Activity JSON:
+<<<GV_SEGMENT_ACTIVITY>>>
+
+Coverage JSON:
+<<<GV_SEGMENT_COVERAGE>>>
+"""
+
 
 async def entrypoint(ctx: JobContext):
     logger.info("═" * 60)
@@ -252,6 +346,16 @@ async def entrypoint(ctx: JobContext):
     stop_event = asyncio.Event()
     finalize_lock = asyncio.Lock()
     finalized: dict[str, bool] = {"value": False}
+    question_lookup: dict[int, dict] = {}
+    for q in questions:
+        try:
+            question_lookup[int(q.get("id"))] = q
+        except Exception:
+            continue
+    segment_lines: dict[str, list[str]] = {}
+    segment_meta: dict[str, dict] = {}
+    question_scores: dict[str, dict] = {}
+    current_segment_key: dict[str, str | None] = {"value": None}
 
     def _line_prefix() -> str:
         qid = active_q.get("qid")
@@ -262,9 +366,107 @@ async def entrypoint(ctx: JobContext):
             return f"[Q{qid}-P{part}]"
         return f"[Q{qid}]"
     early_close_pattern = re.compile(
-        r"\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me)\b",
+        r"\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me|we have completed the questions|completed the questions|pleasure speaking with you|it was a pleasure speaking with you)\b",
         flags=re.IGNORECASE,
     )
+
+    def _segment_key(qid: object, part: object) -> str | None:
+        try:
+            qid_num = int(qid)
+        except (TypeError, ValueError):
+            return None
+        try:
+            part_num = int(part) if part is not None else 0
+        except (TypeError, ValueError):
+            part_num = 0
+        return f"Q{qid_num}" + (f"-P{part_num}" if part_num > 0 else "")
+
+    async def _fetch_question_artifact(qid: int, part: int | None, wait_for_audio: bool = False) -> dict:
+        target_part = int(part or 0)
+        attempts = 5 if wait_for_audio else 1
+        async with httpx.AsyncClient(timeout=10) as client:
+            for attempt in range(attempts):
+                try:
+                    r = await client.get(f"{BACKEND_URL}/api/question-score/live/{ctx.room.name}")
+                    r.raise_for_status()
+                    items = (r.json() or {}).get("items", [])
+                    for item in items:
+                        row_qid = item.get("question_id")
+                        row_part = int(item.get("part") or 0)
+                        if row_qid == qid and row_part == target_part:
+                            if not wait_for_audio or item.get("audio_base64") or attempt == attempts - 1:
+                                return item
+                except Exception as e:
+                    logger.warning("fetch question artifact failed for Q%s part=%s: %s", qid, target_part, e)
+                if wait_for_audio and attempt < attempts - 1:
+                    await asyncio.sleep(0.8)
+        return {}
+
+    async def _upsert_question_snapshot(payload: dict) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                r = await client.post(f"{BACKEND_URL}/api/question-score", json=payload)
+                r.raise_for_status()
+        except Exception as e:
+            logger.warning(
+                "question snapshot upsert failed for %s: %s",
+                payload.get("question_key"),
+                e,
+            )
+
+    async def _finalize_question_segment(segment_key: str | None, reason: str) -> None:
+        if not segment_key:
+            return
+        meta = segment_meta.get(segment_key)
+        if not meta or meta.get("finalized"):
+            return
+
+        qid = int(meta["question_id"])
+        part_num = int(meta.get("part") or 0)
+        transcript_excerpt = "\n".join(segment_lines.get(segment_key, []))
+        artifact = await _fetch_question_artifact(qid, part_num, wait_for_audio=False)
+        coverage = _compute_segment_coverage(transcript_excerpt, artifact.get("activity_json"))
+
+        if _should_try_audio_fallback(coverage, artifact):
+            artifact = await _fetch_question_artifact(qid, part_num, wait_for_audio=True)
+
+        question_meta = question_lookup.get(qid) or {}
+        scored = await _grade_question_segment(
+            question_key=segment_key,
+            question_text=meta.get("question_text") or question_meta.get("question") or "",
+            expected_answer=question_meta.get("answer") or "",
+            transcript_excerpt=transcript_excerpt,
+            activity_json=artifact.get("activity_json") if isinstance(artifact.get("activity_json"), dict) else {},
+            coverage=coverage,
+            audio_base64=artifact.get("audio_base64"),
+            audio_mime_type=artifact.get("audio_mime_type"),
+            api_key=google_key,
+        )
+
+        snapshot = {
+            "student_id": student_identity,
+            "room": ctx.room.name,
+            "question_id": qid,
+            "part": part_num,
+            "question_key": segment_key,
+            "status": "scored" if scored.get("academic") else "insufficient_data",
+            "academic": scored.get("academic"),
+            "personality_snapshot": scored.get("personality"),
+            "question_score": _derive_question_score_value(scored.get("academic")),
+            "summary": scored.get("summary", ""),
+            "transcript_excerpt": transcript_excerpt,
+            "transcript_confidence": coverage["confidence"],
+            "grading_mode": scored.get("grading_mode", "transcript"),
+            "needs_review": bool(scored.get("needs_review")),
+            "activity_json": {
+                **(artifact.get("activity_json") if isinstance(artifact.get("activity_json"), dict) else {}),
+                "coverage": coverage,
+                "segment_finalize_reason": reason,
+            },
+        }
+        question_scores[segment_key] = snapshot
+        meta["finalized"] = True
+        await _upsert_question_snapshot(snapshot)
 
     async def _finalize_and_post(reason: str) -> None:
         async with finalize_lock:
@@ -287,7 +489,30 @@ async def entrypoint(ctx: JobContext):
         for line in transcript_lines:
             logger.info("  %s", line)
 
+        await _finalize_question_segment(current_segment_key["value"], reason)
         graded = await _grade(transcript, google_key)
+        live_aggregate = _aggregate_question_snapshots(list(question_scores.values()))
+        used_live_academic = False
+        used_live_personality = False
+        if live_aggregate.get("academic") and not _has_grade_signal(graded.get("academic"), academic=True):
+            graded["academic"] = live_aggregate["academic"]
+            used_live_academic = True
+        if live_aggregate.get("personality") and not _has_grade_signal(graded.get("personality"), academic=False):
+            graded["personality"] = live_aggregate["personality"]
+            used_live_personality = True
+
+        capture_guardrails = {
+            "used_live_question_academic_fallback": used_live_academic,
+            "used_live_question_personality_fallback": used_live_personality,
+            "question_scores_count": len(question_scores),
+            "review_needed_count": sum(1 for item in question_scores.values() if item.get("needs_review")),
+        }
+        report_json = {
+            "question_scores": list(question_scores.values()),
+            "capture_guardrails": capture_guardrails,
+            "full_transcript_grade": graded,
+        }
+
         await _post_report(
             student_id=student_identity,
             room=ctx.room.name,
@@ -296,20 +521,29 @@ async def entrypoint(ctx: JobContext):
             started_at=started_iso,
             completed_at=completed_iso,
             duration_secs=duration_secs,
+            report_json=report_json,
         )
 
     @session.on("user_speech_committed")
     def on_user_speech(ev) -> None:
         text = getattr(ev, "transcript", None) or getattr(ev, "text", str(ev))
         if text:
-            transcript_lines.append(f"{_line_prefix()} Student: {text}")
+            line = f"{_line_prefix()} Student: {text}"
+            transcript_lines.append(line)
+            seg_key = current_segment_key["value"]
+            if seg_key:
+                segment_lines.setdefault(seg_key, []).append(line)
             logger.info("📝 Student: %s", text)
 
     @session.on("agent_speech_committed")
     def on_agent_speech(ev) -> None:
         text = getattr(ev, "transcript", None) or getattr(ev, "text", str(ev))
         if text:
-            transcript_lines.append(f"{_line_prefix()} Interviewer: {text}")
+            line = f"{_line_prefix()} Interviewer: {text}"
+            transcript_lines.append(line)
+            seg_key = current_segment_key["value"]
+            if seg_key:
+                segment_lines.setdefault(seg_key, []).append(line)
             logger.info("📝 AI: %s", text)
             if not interview_finished["value"] and early_close_pattern.search(text):
                 logger.warning("⚠️ Early closing phrase detected before finish. Forcing continuation.")
@@ -354,6 +588,11 @@ async def entrypoint(ctx: JobContext):
             asyncio.create_task(_finalize_and_post("finish_signal"))
             return
 
+        next_segment_key = _segment_key(qid, part_num)
+        prev_segment_key = current_segment_key["value"]
+        if prev_segment_key and prev_segment_key != next_segment_key:
+            await _finalize_question_segment(prev_segment_key, "question_changed")
+
         extra_hints: list[str] = []
         if kind == "satellite" and qid == 2:
             if part_num in (2, 3):
@@ -393,7 +632,7 @@ async def entrypoint(ctx: JobContext):
             "Then read the QUESTION TEXT BELOW VERBATIM, then ask the student for their answer. "
             + interaction_line
             + nav_line + " "
-            "Do NOT end the interview." 
+            "Do NOT end the interview. Do NOT say that the questions are complete, and do NOT say it was a pleasure speaking with the student yet."
             " After you finish speaking this turn, wait silently — do not repeat the question unless the student asks."
             f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
             + (f"\nCONTEXT (do not read verbatim): {qctx}\n" if qctx else "")
@@ -403,6 +642,20 @@ async def entrypoint(ctx: JobContext):
             session.generate_reply(instructions=notice)
             active_q["qid"] = qid
             active_q["part"] = part_num
+            current_segment_key["value"] = next_segment_key
+            if next_segment_key:
+                segment_meta.setdefault(
+                    next_segment_key,
+                    {
+                        "question_id": int(qid),
+                        "part": int(part_num or 0),
+                        "kind": kind,
+                        "question_text": qtext,
+                        "context": qctx,
+                        "started_at": time.time(),
+                        "finalized": False,
+                    },
+                )
         except Exception as e:
             logger.warning("Could not inject question_changed notice: %s", e)
 
@@ -653,6 +906,255 @@ def _normalize_grade_payload(data: dict) -> dict:
     }
 
 
+def _normalize_segment_grade_payload(data: dict) -> dict:
+    normalized = _normalize_grade_payload(data if isinstance(data, dict) else {})
+    root = data if isinstance(data, dict) else {}
+    normalized["needs_review"] = bool(root.get("needs_review"))
+    return normalized
+
+
+def _derive_question_score_value(academic: dict | None) -> float | None:
+    if not isinstance(academic, dict):
+        return None
+    correctness = _metric_float(academic, "correctness")
+    understanding = _metric_float(academic, "understanding")
+    reasoning_depth = _metric_float(academic, "reasoning_depth")
+    if correctness == 0 and understanding == 0 and reasoning_depth == 0:
+        return None
+    return round((correctness * 0.35 + understanding * 0.4 + reasoning_depth * 0.25) * 10, 2)
+
+
+def _has_grade_signal(payload: dict | None, *, academic: bool) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if academic:
+        keys = ("correctness", "understanding", "reasoning_depth")
+    else:
+        keys = ("confidence", "communication", "curiosity", "exploratory_thinking", "comprehension")
+    return any(_metric_float(payload, key) > 0 for key in keys)
+
+
+def _aggregate_question_snapshots(items: list[dict]) -> dict:
+    academic_items = [item.get("academic") for item in items if isinstance(item.get("academic"), dict)]
+    personality_items = [item.get("personality_snapshot") for item in items if isinstance(item.get("personality_snapshot"), dict)]
+
+    def _avg_metric(dicts: list[dict], key: str) -> float | None:
+        vals = [_metric_float(d, key, default=-1) for d in dicts]
+        vals = [v for v in vals if v >= 0]
+        if not vals:
+            return None
+        return round(sum(vals) / len(vals), 2)
+
+    academic = None
+    correctness = _avg_metric(academic_items, "correctness")
+    understanding = _avg_metric(academic_items, "understanding")
+    reasoning_depth = _avg_metric(academic_items, "reasoning_depth")
+    if correctness is not None and understanding is not None and reasoning_depth is not None:
+        academic = {
+            "correctness": correctness,
+            "understanding": understanding,
+            "reasoning_depth": reasoning_depth,
+        }
+
+    personality = None
+    confidence = _avg_metric(personality_items, "confidence")
+    communication = _avg_metric(personality_items, "communication")
+    curiosity = _avg_metric(personality_items, "curiosity")
+    exploratory_thinking = _avg_metric(personality_items, "exploratory_thinking")
+    comprehension = _avg_metric(personality_items, "comprehension")
+    if None not in (confidence, communication, curiosity, exploratory_thinking, comprehension):
+        personality = {
+            "confidence": confidence,
+            "communication": communication,
+            "curiosity": curiosity,
+            "exploratory_thinking": exploratory_thinking,
+            "comprehension": comprehension,
+        }
+    return {"academic": academic, "personality": personality}
+
+
+def _compute_segment_coverage(transcript_excerpt: str, activity_json: dict | None) -> dict:
+    lines = [line.strip() for line in transcript_excerpt.splitlines() if line.strip()]
+    student_lines = [line for line in lines if "Student:" in line]
+    interviewer_lines = [line for line in lines if "Interviewer:" in line]
+    student_chars = sum(len(line.split("Student:", 1)[-1].strip()) for line in student_lines)
+    interviewer_chars = sum(len(line.split("Interviewer:", 1)[-1].strip()) for line in interviewer_lines)
+    activity = activity_json if isinstance(activity_json, dict) else {}
+    speaking_ms = float(activity.get("student_speaking_ms") or 0)
+    student_spoke = bool(activity.get("student_spoke")) or speaking_ms >= 1200
+    score = 0.0
+    if student_lines:
+        score += 0.45
+    if student_chars >= 24:
+        score += 0.25
+    if interviewer_lines:
+        score += 0.10
+    if speaking_ms >= 2000:
+        score += 0.20
+    confidence = min(1.0, round(score, 3))
+    return {
+        "student_turns": len(student_lines),
+        "interviewer_turns": len(interviewer_lines),
+        "student_chars": student_chars,
+        "interviewer_chars": interviewer_chars,
+        "student_spoke": student_spoke,
+        "student_speaking_ms": speaking_ms,
+        "confidence": confidence,
+        "weak_transcript": confidence < 0.55,
+        "likely_capture_failure": student_spoke and student_chars < 12,
+    }
+
+
+def _should_try_audio_fallback(coverage: dict, artifact: dict | None) -> bool:
+    _ = artifact if isinstance(artifact, dict) else {}
+    return bool(coverage.get("weak_transcript"))
+
+
+def _render_prompt(template: str, replacements: dict[str, object]) -> str:
+    rendered = template
+    for marker, value in replacements.items():
+        rendered = rendered.replace(marker, json.dumps(value, ensure_ascii=True) if isinstance(value, (dict, list)) else str(value))
+    return rendered
+
+
+def _generate_json_text(prompt: str, api_key: str) -> dict:
+    import google.generativeai as genai
+
+    genai.configure(api_key=api_key)
+    preferred = (os.environ.get("GRADING_MODEL") or "").strip()
+    fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+    models: list[str] = []
+    for m in [preferred, *fallbacks]:
+        if m and m not in models:
+            models.append(m)
+
+    last_exc: Exception | None = None
+    for model_name in models:
+        try:
+            model = genai.GenerativeModel(
+                model_name,
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.2,
+                },
+            )
+            resp = model.generate_content(prompt)
+            raw_text = _gemini_response_text(resp)
+            parsed = _extract_json_dict(raw_text)
+            if not parsed:
+                raise ValueError(f"empty or non-object JSON from model (preview={raw_text[:240]!r})")
+            return parsed
+        except Exception as e:
+            last_exc = e
+            logger.warning("json prompt failed for model=%s: %s", model_name, e)
+    raise RuntimeError(f"all text grading models failed: {last_exc}")
+
+
+def _generate_json_from_audio(prompt: str, audio_bytes: bytes, mime_type: str, api_key: str) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+    preferred = (os.environ.get("AUDIO_GRADING_MODEL") or "").strip()
+    fallbacks = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    models: list[str] = []
+    for m in [preferred, *fallbacks]:
+        if m and m not in models:
+            models.append(m)
+
+    last_exc: Exception | None = None
+    for model_name in models:
+        try:
+            resp = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    prompt,
+                    types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                ),
+            )
+            raw_text = getattr(resp, "text", "") or ""
+            parsed = _extract_json_dict(raw_text)
+            if not parsed:
+                raise ValueError(f"empty or non-object JSON from audio model (preview={raw_text[:240]!r})")
+            return parsed
+        except Exception as e:
+            last_exc = e
+            logger.warning("audio grading failed for model=%s: %s", model_name, e)
+    raise RuntimeError(f"all audio grading models failed: {last_exc}")
+
+
+async def _grade_question_segment(
+    *,
+    question_key: str,
+    question_text: str,
+    expected_answer: str,
+    transcript_excerpt: str,
+    activity_json: dict,
+    coverage: dict,
+    audio_base64: str | None,
+    audio_mime_type: str | None,
+    api_key: str,
+) -> dict:
+    transcript_excerpt = transcript_excerpt.strip()
+    needs_review = bool(coverage.get("likely_capture_failure"))
+    prefer_audio = bool(coverage.get("weak_transcript")) and bool(audio_base64 and audio_mime_type)
+    prompt = _render_prompt(
+        QUESTION_GRADING_PROMPT,
+        {
+            "<<<GV_SEGMENT_KEY>>>": question_key,
+            "<<<GV_SEGMENT_QUESTION>>>": question_text or "",
+            "<<<GV_SEGMENT_EXPECTED>>>": expected_answer or "",
+            "<<<GV_SEGMENT_TRANSCRIPT>>>": transcript_excerpt or "[no transcript captured]",
+            "<<<GV_SEGMENT_ACTIVITY>>>": activity_json or {},
+            "<<<GV_SEGMENT_COVERAGE>>>": coverage,
+        },
+    )
+
+    if not prefer_audio:
+        try:
+            parsed = await asyncio.to_thread(_generate_json_text, prompt, api_key)
+            normalized = _normalize_segment_grade_payload(parsed)
+            normalized["grading_mode"] = "transcript"
+            normalized["needs_review"] = bool(normalized.get("needs_review")) or needs_review
+            return normalized
+        except Exception as text_err:
+            logger.warning("segment transcript grading failed for %s: %s", question_key, text_err)
+
+    if audio_base64 and audio_mime_type:
+        try:
+            audio_prompt = _render_prompt(
+                AUDIO_FALLBACK_PROMPT,
+                {
+                    "<<<GV_SEGMENT_KEY>>>": question_key,
+                    "<<<GV_SEGMENT_QUESTION>>>": question_text or "",
+                    "<<<GV_SEGMENT_EXPECTED>>>": expected_answer or "",
+                    "<<<GV_SEGMENT_TRANSCRIPT>>>": transcript_excerpt or "[no transcript captured]",
+                    "<<<GV_SEGMENT_ACTIVITY>>>": activity_json or {},
+                    "<<<GV_SEGMENT_COVERAGE>>>": coverage,
+                },
+            )
+            audio_bytes = base64.b64decode(audio_base64)
+            parsed = await asyncio.to_thread(_generate_json_from_audio, audio_prompt, audio_bytes, audio_mime_type, api_key)
+            normalized = _normalize_segment_grade_payload(parsed)
+            normalized["grading_mode"] = "audio_fallback"
+            normalized["needs_review"] = bool(normalized.get("needs_review"))
+            return normalized
+        except Exception as audio_err:
+            logger.warning("segment audio fallback failed for %s: %s", question_key, audio_err)
+
+    return {
+        "academic": {},
+        "personality": {},
+        "summary": "Insufficient capture data for reliable automatic grading.",
+        "needs_review": True,
+        "grading_mode": "insufficient_data",
+    }
+
+
 async def _grade(transcript: str, api_key: str) -> dict:
     empty_err = {
         "academic": {"correctness": 0, "understanding": 0, "reasoning_depth": 0},
@@ -738,6 +1240,7 @@ async def _post_report(
     started_at: str,
     completed_at: str,
     duration_secs: int,
+    report_json: dict | None = None,
 ):
     payload = {
         "student_id": student_id,
@@ -751,6 +1254,7 @@ async def _post_report(
         "started_at": started_at,
         "completed_at": completed_at,
         "duration_secs": duration_secs,
+        "report_json": report_json or {},
     }
     try:
         async with httpx.AsyncClient(timeout=30) as client:

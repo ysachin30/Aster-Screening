@@ -75,9 +75,52 @@ CREATE TABLE IF NOT EXISTS interview_reports (
   delivered_at             TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS interview_question_scores (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id               UUID REFERENCES interview_reports(report_id) ON DELETE SET NULL,
+  student_id              TEXT NOT NULL REFERENCES students(student_id),
+  room                    TEXT NOT NULL,
+  question_id             INTEGER NOT NULL,
+  part                    INTEGER NOT NULL DEFAULT 0,
+  question_key            TEXT NOT NULL,
+  status                  TEXT NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending','artifact_ready','scored','final','insufficient_data')),
+
+  academic_correctness    NUMERIC(4,2),
+  academic_understanding  NUMERIC(4,2),
+  academic_reasoning      NUMERIC(4,2),
+  question_score          NUMERIC(5,2),
+
+  confidence_score        NUMERIC(4,2),
+  communication_score     NUMERIC(4,2),
+  curiosity_score         NUMERIC(4,2),
+  exploratory_score       NUMERIC(4,2),
+  comprehension_score     NUMERIC(4,2),
+
+  grading_mode            TEXT,
+  transcript_confidence   NUMERIC(4,3),
+  needs_review            BOOLEAN DEFAULT FALSE,
+
+  summary                 TEXT,
+  transcript_excerpt      TEXT,
+  activity_json           JSONB,
+  audio_mime_type         TEXT,
+  audio_base64            TEXT,
+
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ DEFAULT NOW(),
+  scored_at               TIMESTAMPTZ
+);
+
 CREATE INDEX IF NOT EXISTS idx_evaluations_student ON evaluations(student_id);
 CREATE INDEX IF NOT EXISTS idx_interview_attempts_student ON interview_attempts(student_id);
 CREATE INDEX IF NOT EXISTS idx_interview_attempts_time ON interview_attempts(started_at);
 CREATE INDEX IF NOT EXISTS idx_reports_student ON interview_reports(student_id, completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_shortlist ON interview_reports(shortlist_status, overall_score DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_delivery ON interview_reports(delivery_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_question_scores_room_key
+  ON interview_question_scores(room, question_id, part);
+CREATE INDEX IF NOT EXISTS idx_question_scores_room_updated
+  ON interview_question_scores(room, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_question_scores_student
+  ON interview_question_scores(student_id, created_at DESC);

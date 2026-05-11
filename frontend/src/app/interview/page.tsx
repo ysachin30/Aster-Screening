@@ -15,7 +15,8 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
 const GIF_URL = encodeURI("/q1.gif");
 const Q2_THEORY_GIF_URL = encodeURI("/this.gif");
-const Q5_BRIDGE_CANVAS_GIF_URL = encodeURI("/smaller-simpler.gif");
+const Q4_BRIDGE_GIF_URL = encodeURI("/thisisbridge.gif");
+const Q5_LOGIC_GIF_URL = encodeURI("/smaller-simpler.gif");
 
 type AvatarState = "idle" | "speaking" | "listening" | "thinking" | "ended";
 
@@ -32,6 +33,34 @@ type Question = {
   context: string;
   hints: string[];
   answer: string;
+};
+
+type QuestionInteractionSnapshot = {
+  question_id: number;
+  part: number;
+  question_key: string;
+  kind: QuestionKind;
+  has_drawing: boolean;
+  stroke_count: number;
+  total_stroke_points: number;
+  draw_mode: boolean;
+  context_open: boolean;
+  sat_angle: number | null;
+  diff_x: number | null;
+  updated_at: number;
+};
+
+type SegmentActivitySummary = {
+  started_at_ms: number;
+  ended_at_ms: number;
+  duration_ms: number;
+  student_spoke: boolean;
+  student_turns: number;
+  ai_turns: number;
+  student_speaking_ms: number;
+  ai_speaking_ms: number;
+  first_response_latency_ms: number | null;
+  latest_interaction: QuestionInteractionSnapshot | null;
 };
 
 const Q2_PART_1 = "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.";
@@ -530,6 +559,7 @@ function QuestionPanel({
   setAnsweredQuestions,
   q2Part,
   setQ2Part,
+  onActivitySnapshot,
 }: {
   question: Question;
   frozen: boolean;
@@ -539,6 +569,7 @@ function QuestionPanel({
   setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
   q2Part?: number;
   setQ2Part?: React.Dispatch<React.SetStateAction<number>>;
+  onActivitySnapshot?: (snapshot: QuestionInteractionSnapshot) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showContext, setShowContext] = useState(false);
@@ -1176,6 +1207,7 @@ function QuestionPanel({
   const isDiff = question.kind === "differentiability";
   const isQ2 = question.id === 2;
   const isQ4BridgeGif = question.id === 4;
+  const isQ5LogicGif = question.id === 5;
   const part = q2Part ?? 1;
   const isQ2TheoryPart = isQ2 && part === 1;
   const isSatelliteInteractive = isSatellite && !isQ2TheoryPart;
@@ -1183,6 +1215,23 @@ function QuestionPanel({
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
   const hidePresetVectors = isQ2;
   const canAdvanceQ2Part = part === 1 ? true : strokes.length > 0;
+
+  useEffect(() => {
+    onActivitySnapshot?.({
+      question_id: question.id,
+      part,
+      question_key: `Q${question.id}${part > 0 && question.id === 2 ? `-P${part}` : ""}`,
+      kind: question.kind,
+      has_drawing: strokes.length > 0,
+      stroke_count: strokes.length,
+      total_stroke_points: strokes.reduce((sum, stroke) => sum + stroke.length, 0),
+      draw_mode: drawMode,
+      context_open: showContext,
+      sat_angle: isSatellite ? satAngle : null,
+      diff_x: isDiff ? diffX : null,
+      updated_at: Date.now(),
+    });
+  }, [question.id, question.kind, part, strokes, drawMode, showContext, satAngle, diffX, isSatellite, isDiff, onActivitySnapshot]);
 
   return (
     <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
@@ -1267,7 +1316,13 @@ function QuestionPanel({
             ) : isQ4BridgeGif ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={Q5_BRIDGE_CANVAS_GIF_URL} alt="Bridge puzzle visual" className="w-full h-full object-cover" />
+                <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
+              </>
+            ) : isQ5LogicGif ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
               </>
             ) : (
@@ -1354,7 +1409,35 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [q2Part, setQ2Part] = useState(1);
-  const earlyClosePattern = /\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me)\b/i;
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const activeRecordingKeyRef = useRef<string | null>(null);
+  const currentSegmentRef = useRef<{ question_id: number; part: number; question_key: string; kind: QuestionKind; started_at_ms: number } | null>(null);
+  const flushedSegmentKeysRef = useRef<Set<string>>(new Set());
+  const latestInteractionRef = useRef<QuestionInteractionSnapshot | null>(null);
+  const segmentMetricsRef = useRef<{
+    started_at_ms: number;
+    user_turns: number;
+    ai_turns: number;
+    student_speaking_ms: number;
+    ai_speaking_ms: number;
+    student_active_since: number | null;
+    ai_active_since: number | null;
+    first_response_latency_ms: number | null;
+    student_spoke: boolean;
+  }>({
+    started_at_ms: Date.now(),
+    user_turns: 0,
+    ai_turns: 0,
+    student_speaking_ms: 0,
+    ai_speaking_ms: 0,
+    student_active_since: null,
+    ai_active_since: null,
+    first_response_latency_ms: null,
+    student_spoke: false,
+  });
+  const earlyClosePattern = /\b(thank you|thanks for your time|get back to you soon|interview (is )?complete|final summary|no more questions|do you have any questions for me|we have completed the questions|completed the questions|pleasure speaking with you|it was a pleasure speaking with you)\b/i;
   const englishLike = useCallback((text: string) => {
     const cleaned = text.replace(/\s+/g, " ").trim();
     if (!cleaned) return false;
@@ -1379,6 +1462,182 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   useEffect(() => {
     if (question.id !== 2) setQ2Part(1);
   }, [question.id]);
+
+  const buildSegmentDescriptor = useCallback((q: Question, partOverride?: number) => {
+    const resolvedPart = q.id === 2 ? (partOverride ?? 1) : 0;
+    return {
+      question_id: q.id,
+      part: resolvedPart,
+      question_key: `Q${q.id}${resolvedPart > 0 ? `-P${resolvedPart}` : ""}`,
+      kind: q.kind,
+      started_at_ms: Date.now(),
+    };
+  }, []);
+
+  const resetSegmentMetrics = useCallback((startedAtMs: number) => {
+    segmentMetricsRef.current = {
+      started_at_ms: startedAtMs,
+      user_turns: 0,
+      ai_turns: 0,
+      student_speaking_ms: 0,
+      ai_speaking_ms: 0,
+      student_active_since: null,
+      ai_active_since: null,
+      first_response_latency_ms: null,
+      student_spoke: false,
+    };
+  }, []);
+
+  const encodeBlobBase64 = useCallback((blob: Blob) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        const commaIdx = result.indexOf(",");
+        resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const ensureRecordingStream = useCallback(async () => {
+    if (mediaStreamRef.current) return mediaStreamRef.current;
+    try {
+      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return mediaStreamRef.current;
+    } catch (e) {
+      console.warn("[audio-fallback] mic stream unavailable", e);
+      return null;
+    }
+  }, []);
+
+  const startSegmentRecording = useCallback(async (segment: { question_key: string }) => {
+    if (typeof window === "undefined" || typeof MediaRecorder === "undefined") return;
+    const stream = await ensureRecordingStream();
+    if (!stream) return;
+    try {
+      const preferredMimeTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      const mimeType = preferredMimeTypes.find((candidate) => {
+        try {
+          return MediaRecorder.isTypeSupported(candidate);
+        } catch {
+          return false;
+        }
+      });
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) mediaChunksRef.current.push(event.data);
+      };
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      activeRecordingKeyRef.current = segment.question_key;
+    } catch (e) {
+      console.warn("[audio-fallback] recorder start failed", e);
+    }
+  }, [ensureRecordingStream]);
+
+  const stopSegmentRecording = useCallback(async (questionKey: string) => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || activeRecordingKeyRef.current !== questionKey) return null;
+    if (recorder.state === "inactive") {
+      const blob = mediaChunksRef.current.length ? new Blob(mediaChunksRef.current, { type: recorder.mimeType || "audio/webm" }) : null;
+      mediaRecorderRef.current = null;
+      activeRecordingKeyRef.current = null;
+      mediaChunksRef.current = [];
+      return blob;
+    }
+    return await new Promise<Blob | null>((resolve) => {
+      recorder.onstop = () => {
+        const blob = mediaChunksRef.current.length ? new Blob(mediaChunksRef.current, { type: recorder.mimeType || "audio/webm" }) : null;
+        mediaRecorderRef.current = null;
+        activeRecordingKeyRef.current = null;
+        mediaChunksRef.current = [];
+        resolve(blob);
+      };
+      recorder.stop();
+    });
+  }, []);
+
+  const buildSegmentActivitySummary = useCallback((endedAtMs: number): SegmentActivitySummary => {
+    const metrics = segmentMetricsRef.current;
+    const current = { ...metrics };
+    if (current.student_active_since !== null) {
+      current.student_speaking_ms += Math.max(0, endedAtMs - current.student_active_since);
+      current.student_active_since = null;
+    }
+    if (current.ai_active_since !== null) {
+      current.ai_speaking_ms += Math.max(0, endedAtMs - current.ai_active_since);
+      current.ai_active_since = null;
+    }
+    segmentMetricsRef.current = current;
+    return {
+      started_at_ms: current.started_at_ms,
+      ended_at_ms: endedAtMs,
+      duration_ms: Math.max(0, endedAtMs - current.started_at_ms),
+      student_spoke: current.student_spoke,
+      student_turns: current.user_turns,
+      ai_turns: current.ai_turns,
+      student_speaking_ms: current.student_speaking_ms,
+      ai_speaking_ms: current.ai_speaking_ms,
+      first_response_latency_ms: current.first_response_latency_ms,
+      latest_interaction: latestInteractionRef.current,
+    };
+  }, []);
+
+  const uploadSegmentArtifact = useCallback(async (
+    segment: { question_id: number; part: number; question_key: string; kind: QuestionKind; started_at_ms: number },
+    reason: string,
+  ) => {
+    if (flushedSegmentKeysRef.current.has(segment.question_key)) return;
+    flushedSegmentKeysRef.current.add(segment.question_key);
+    const endedAtMs = Date.now();
+    const activitySummary = buildSegmentActivitySummary(endedAtMs);
+    const blob = await stopSegmentRecording(segment.question_key);
+    let audio_base64: string | undefined;
+    let audio_mime_type: string | undefined;
+    if (blob && blob.size > 0) {
+      try {
+        audio_base64 = await encodeBlobBase64(blob);
+        audio_mime_type = blob.type || "audio/webm";
+      } catch (e) {
+        console.warn("[audio-fallback] blob encode failed", e);
+      }
+    }
+    try {
+      await fetch(`${BACKEND}/api/question-score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_id: room.localParticipant.identity,
+          room: room.name,
+          question_id: segment.question_id,
+          part: segment.part,
+          question_key: segment.question_key,
+          status: "artifact_ready",
+          grading_mode: audio_base64 ? "artifact_ready" : "artifact_ready_no_audio",
+          needs_review: false,
+          activity_json: {
+            ...activitySummary,
+            reason,
+            question_kind: segment.kind,
+            audio_available: Boolean(audio_base64),
+          },
+          audio_mime_type,
+          audio_base64,
+        }),
+      });
+    } catch (e) {
+      console.warn("[audio-fallback] artifact upload failed", e);
+      flushedSegmentKeysRef.current.delete(segment.question_key);
+    }
+  }, [buildSegmentActivitySummary, encodeBlobBase64, room.localParticipant.identity, room.name, stopSegmentRecording]);
 
   const publishQuestionChanged = useCallback((nextIdx: number, nextQ: Question, extra?: Record<string, unknown>) => {
     const eventId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1489,8 +1748,29 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
 
     const onActiveSpeakers = (speakers: any[]) => {
       if (ended) return;
+      const now = Date.now();
+      const metrics = segmentMetricsRef.current;
       const aiTalking = speakers.some((p: any) => String(p.identity).startsWith("agent-"));
       const userTalking = speakers.some((p: any) => p.identity === room.localParticipant.identity);
+      if (!isIntroductionPhase) {
+        if (userTalking && metrics.student_active_since === null) {
+          metrics.student_active_since = now;
+          metrics.student_spoke = true;
+          if (metrics.first_response_latency_ms === null) {
+            metrics.first_response_latency_ms = Math.max(0, now - metrics.started_at_ms);
+          }
+        } else if (!userTalking && metrics.student_active_since !== null) {
+          metrics.student_speaking_ms += Math.max(0, now - metrics.student_active_since);
+          metrics.student_active_since = null;
+        }
+
+        if (aiTalking && metrics.ai_active_since === null) {
+          metrics.ai_active_since = now;
+        } else if (!aiTalking && metrics.ai_active_since !== null) {
+          metrics.ai_speaking_ms += Math.max(0, now - metrics.ai_active_since);
+          metrics.ai_active_since = null;
+        }
+      }
       if (aiTalking) {
         if (thinkingTimerRef.current) clearTimeout(thinkingTimerRef.current);
         setAvatarState({ ai: "speaking", human: "idle" });
@@ -1517,6 +1797,10 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
         const who: "ai" | "user" = String(participant?.identity ?? "").startsWith("agent-") ? "ai" : "user";
         const segId = seg.id ?? `${who}-${seg.firstReceivedTime ?? Date.now()}`;
         const isFinal = seg.final ?? seg.isFinal ?? true;
+        if (!isIntroductionPhase && isFinal) {
+          if (who === "user") segmentMetricsRef.current.user_turns += 1;
+          else segmentMetricsRef.current.ai_turns += 1;
+        }
         // Only store transcript once question phase begins; English-only (student + AI).
         if (!isIntroductionPhase && englishLike(text)) {
           const now = Date.now();
@@ -1593,6 +1877,39 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     pendingCanvasRef.current = canvas;
     if (room.state === ConnectionState.Connected) doPublish(canvas);
   }, [room, doPublish]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isIntroductionPhase) return;
+    const nextSegment = buildSegmentDescriptor(question, q2Part);
+
+    void (async () => {
+      const current = currentSegmentRef.current;
+      if (current && current.question_key !== nextSegment.question_key) {
+        await uploadSegmentArtifact(current, "question_changed");
+      }
+      if (cancelled) return;
+      currentSegmentRef.current = nextSegment;
+      latestInteractionRef.current = null;
+      resetSegmentMetrics(nextSegment.started_at_ms);
+      flushedSegmentKeysRef.current.delete(nextSegment.question_key);
+      await startSegmentRecording(nextSegment);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isIntroductionPhase, question, q2Part, buildSegmentDescriptor, resetSegmentMetrics, startSegmentRecording, uploadSegmentArtifact]);
+
+  useEffect(() => {
+    return () => {
+      const current = currentSegmentRef.current;
+      if (current) {
+        void uploadSegmentArtifact(current, "component_unmount");
+      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [uploadSegmentArtifact]);
 
   // Clear chat when moving to a new question
   useEffect(() => {
@@ -1912,6 +2229,9 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
                 setAnsweredQuestions={setAnsweredQuestions}
                 q2Part={q2Part}
                 setQ2Part={setQ2Part}
+                onActivitySnapshot={(snapshot) => {
+                  latestInteractionRef.current = snapshot;
+                }}
               />
             </div>
             </div>
@@ -1935,7 +2255,10 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
               <div className="px-3 pt-2 pb-3 shrink-0 border-t border-white/10 bg-[#0a0d18]/90 backdrop-blur-md">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    if (currentSegmentRef.current) {
+                      await uploadSegmentArtifact(currentSegmentRef.current, "finish_click");
+                    }
                     const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
                     publishFinish(payload);
                     setIsFinished(true);
