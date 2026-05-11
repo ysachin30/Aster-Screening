@@ -1810,7 +1810,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }, []);
 
   useEffect(() => {
-    if (isIntroductionPhase || focusCountdown !== null) return;
+    if (isIntroductionPhase) return;
 
     void enterFullscreenFocus();
     setFocusCountdown(3);
@@ -1827,7 +1827,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     }, 900);
 
     return () => window.clearInterval(interval);
-  }, [isIntroductionPhase, focusCountdown]);
+  }, [isIntroductionPhase]);
 
   const buildSegmentDescriptor = useCallback((q: Question, partOverride?: number): SegmentDescriptor => {
     const resolvedPart = q.id === 2 ? (partOverride ?? 1) : 0;
