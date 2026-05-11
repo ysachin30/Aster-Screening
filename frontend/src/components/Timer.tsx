@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
-const RADIUS = 28;
+const RADIUS = 18;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () => void }) {
@@ -64,28 +64,28 @@ export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () =
     <motion.div
       animate={isUrgent ? { y: [0, -1, 0] } : undefined}
       transition={isUrgent ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" } : undefined}
-      className={`rounded-2xl border px-4 py-3 ${status.tone} ${isCritical ? "animate-timer-pulse" : ""}`}
+      className={`rounded-xl border px-2.5 py-2 ${status.tone} ${isCritical ? "animate-timer-pulse" : ""}`}
       aria-live="polite"
     >
-      <div className="flex items-center gap-4">
-        <div className="relative h-[68px] w-[68px] shrink-0">
-          <svg className="-rotate-90 h-[68px] w-[68px]" viewBox="0 0 76 76">
+      <div className="flex items-center gap-2.5">
+        <div className="relative h-[44px] w-[44px] shrink-0">
+          <svg className="-rotate-90 h-[44px] w-[44px]" viewBox="0 0 52 52">
             <circle
-              cx="38"
-              cy="38"
+              cx="26"
+              cy="26"
               r={RADIUS}
               fill="none"
               stroke="currentColor"
               className="opacity-10"
-              strokeWidth="5"
+              strokeWidth="4"
             />
             <circle
-              cx="38"
-              cy="38"
+              cx="26"
+              cy="26"
               r={RADIUS}
               fill="none"
               stroke={status.color}
-              strokeWidth="5"
+              strokeWidth="4"
               strokeLinecap="round"
               strokeDasharray={CIRCUMFERENCE}
               strokeDashoffset={dashOffset}
@@ -95,25 +95,24 @@ export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () =
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            <span className="text-[8px] font-semibold uppercase tracking-widest text-slate-500">
               Time
             </span>
           </div>
         </div>
 
-        <div className="min-w-[9rem]">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+        <div className="min-w-[6.75rem]">
+          <p className="text-[8px] font-semibold uppercase tracking-widest text-slate-500">
             Assessment timer
           </p>
-          <div className="mt-0.5 flex items-end gap-2">
-            <span className="text-3xl font-semibold tracking-tight tabular-nums">
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span className="text-xl font-semibold tracking-tight tabular-nums">
               {minutesLabel}:{secondsLabel}
             </span>
-            <span className="mb-1.5 rounded-full border border-slate-200 bg-slate-100/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-slate-100/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-slate-600">
               {status.label}
             </span>
           </div>
-          <p className="text-sm font-medium text-slate-500">{status.hint}</p>
         </div>
       </div>
     </motion.div>
