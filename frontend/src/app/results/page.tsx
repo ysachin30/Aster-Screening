@@ -5,29 +5,33 @@ import { useSearchParams } from "next/navigation";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
-function num(v: unknown, fallback = 0): number {
+function num(v: unknown, fallback: number | null = null): number | null {
   if (v === null || v === undefined) return fallback;
   const n = typeof v === "number" ? v : parseFloat(String(v));
   return Number.isFinite(n) ? n : fallback;
+}
+
+function formatNum(v: number | null, digits = 1) {
+  return v === null ? "—" : v.toFixed(digits);
 }
 
 interface InterviewReport {
   report_id: string;
   student_id: string;
   room: string;
-  academic_correctness: number;
-  academic_understanding: number;
-  academic_reasoning: number;
-  academic_score: number;
-  conf_score: number;
-  communication_score: number;
-  curiosity_score: number;
-  exploratory_score: number;
-  comprehension_score: number;
-  personality_score: number;
-  overall_score: number;
-  band: string;
-  shortlist_status: string;
+  academic_correctness: number | null;
+  academic_understanding: number | null;
+  academic_reasoning: number | null;
+  academic_score: number | null;
+  conf_score: number | null;
+  communication_score: number | null;
+  curiosity_score: number | null;
+  exploratory_score: number | null;
+  comprehension_score: number | null;
+  personality_score: number | null;
+  overall_score: number | null;
+  band: string | null;
+  shortlist_status: string | null;
   manual_override_status: string | null;
   decision_reason: string | null;
   summary: string | null;
@@ -54,7 +58,10 @@ export default function ResultsPage() {
   );
 }
 
-function shortlistLabel(status: string): { label: string; className: string } {
+function shortlistLabel(status: string | null): { label: string; className: string } {
+  if (!status) {
+    return { label: "Pending review", className: "bg-white/10 border-white/20 text-white/70" };
+  }
   switch (status) {
     case "shortlist":
       return { label: "Shortlist", className: "bg-emerald-500/15 border-emerald-400/30 text-emerald-300" };
@@ -121,6 +128,7 @@ function ResultsPageContent() {
   const overallPct = num(report.overall_score);
   const effectiveShortlist = report.manual_override_status || report.shortlist_status;
   const sl = shortlistLabel(effectiveShortlist);
+  const reviewPending = overallPct === null;
 
   const academicDims = [
     { label: "Correctness", value: num(report.academic_correctness), color: "#38bdf8" },
@@ -183,7 +191,7 @@ function ResultsPageContent() {
                 fill="none"
                 strokeLinecap="round"
                 strokeDasharray={352}
-                strokeDashoffset={352 - (352 * overallPct) / 100}
+                strokeDashoffset={352 - (352 * (overallPct ?? 0)) / 100}
                 className="transition-all duration-1000"
               />
               <defs>
@@ -193,11 +201,11 @@ function ResultsPageContent() {
                 </linearGradient>
               </defs>
             </svg>
-            <span className="absolute text-3xl font-bold text-white">{Math.round(overallPct)}%</span>
+            <span className="absolute text-3xl font-bold text-white">{overallPct === null ? "—" : `${Math.round(overallPct)}%`}</span>
           </div>
-          <p className="text-white/60 text-sm">Overall score (academic + personality)</p>
+          <p className="text-white/60 text-sm">{reviewPending ? "Automatic scoring pending review" : "Overall score (academic + personality)"}</p>
           <p className="text-white/35 text-xs mt-2">
-            Academic {num(report.academic_score).toFixed(1)} · Personality {num(report.personality_score).toFixed(1)}
+            Academic {formatNum(num(report.academic_score))} · Personality {formatNum(num(report.personality_score))}
           </p>
         </div>
 
@@ -206,11 +214,12 @@ function ResultsPageContent() {
           {academicDims.map((dim) => (
             <div key={dim.label} className="glass rounded-2xl p-6 text-center">
               <p className="text-white/40 text-xs uppercase tracking-wide mb-2">{dim.label}</p>
-              <p className="text-4xl font-bold text-white mb-2">{dim.value.toFixed(1)}</p>
+              <p className="text-4xl font-bold text-white mb-2">{formatNum(dim.value)}</p>
+              {dim.value === null ? <p className="text-[11px] text-white/35 mb-2">Pending review</p> : null}
               <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-1000"
-                  style={{ width: `${dim.value * 10}%`, backgroundColor: dim.color }}
+                  style={{ width: `${(dim.value ?? 0) * 10}%`, backgroundColor: dim.color }}
                 />
               </div>
             </div>
@@ -222,11 +231,12 @@ function ResultsPageContent() {
           {personalityDims.map((dim) => (
             <div key={dim.label} className="glass rounded-2xl p-6 text-center">
               <p className="text-white/40 text-xs uppercase tracking-wide mb-2">{dim.label}</p>
-              <p className="text-3xl font-bold text-white mb-2">{dim.value.toFixed(1)}</p>
+              <p className="text-3xl font-bold text-white mb-2">{formatNum(dim.value)}</p>
+              {dim.value === null ? <p className="text-[11px] text-white/35 mb-2">Pending review</p> : null}
               <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-1000"
-                  style={{ width: `${dim.value * 10}%`, backgroundColor: dim.color }}
+                  style={{ width: `${(dim.value ?? 0) * 10}%`, backgroundColor: dim.color }}
                 />
               </div>
             </div>

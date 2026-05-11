@@ -72,6 +72,73 @@ function deriveRollups(
   };
 }
 
+function deriveRollupsNullable(
+  academic: { correctness: number; understanding: number; reasoning_depth: number } | null,
+  personality: {
+    confidence: number;
+    communication: number;
+    curiosity: number;
+    exploratory_thinking: number;
+    comprehension: number;
+  } | null,
+) {
+  const academicPart = academic
+    ? {
+        academic_correctness: clamp010(academic.correctness),
+        academic_understanding: clamp010(academic.understanding),
+        academic_reasoning: clamp010(academic.reasoning_depth),
+        academic_score:
+          (clamp010(academic.correctness) * 0.35 +
+            clamp010(academic.understanding) * 0.4 +
+            clamp010(academic.reasoning_depth) * 0.25) *
+          10,
+      }
+    : {
+        academic_correctness: null,
+        academic_understanding: null,
+        academic_reasoning: null,
+        academic_score: null,
+      };
+
+  const personalityPart = personality
+    ? {
+        conf_score: clamp010(personality.confidence),
+        communication_score: clamp010(personality.communication),
+        curiosity_score: clamp010(personality.curiosity),
+        exploratory_score: clamp010(personality.exploratory_thinking),
+        comprehension_score: clamp010(personality.comprehension),
+        personality_score:
+          ((clamp010(personality.confidence) +
+            clamp010(personality.communication) +
+            clamp010(personality.curiosity) +
+            clamp010(personality.exploratory_thinking) +
+            clamp010(personality.comprehension)) /
+            5) *
+          10,
+      }
+    : {
+        conf_score: null,
+        communication_score: null,
+        curiosity_score: null,
+        exploratory_score: null,
+        comprehension_score: null,
+        personality_score: null,
+      };
+
+  if (!academic || !personality) {
+    return {
+      ...academicPart,
+      ...personalityPart,
+      overall_score: null,
+      band: null,
+      shortlist_status: null,
+      decision_reason: "Pending review: insufficient evidence for reliable automatic scoring.",
+    };
+  }
+
+  return deriveRollups(academic, personality);
+}
+
 function deriveQuestionScore(academic: { correctness?: number | null; understanding?: number | null; reasoning_depth?: number | null }) {
   if (
     academic.correctness === null || academic.correctness === undefined ||
@@ -470,11 +537,13 @@ reportRouter.post("/report", async (req, res) => {
     const questionBreakdown = questionRows.map((row) => mapQuestionScoreRow(row));
     const fallbackAcademic = deriveAcademicFromQuestionRows(questionRows);
     const fallbackPersonality = derivePersonalityFromQuestionRows(questionRows);
+    const transcriptAcademic = hasAcademicSignal(academic) ? academic : null;
+    const transcriptPersonality = hasPersonalitySignal(personality) ? personality : null;
     const useAcademicFallback = fallbackAcademic !== null;
-    const usePersonalityFallback = !hasPersonalitySignal(personality) && fallbackPersonality !== null;
-    const effectiveAcademic = useAcademicFallback ? fallbackAcademic : academic;
-    const effectivePersonality = usePersonalityFallback ? fallbackPersonality : personality;
-    const roll = deriveRollups(effectiveAcademic, effectivePersonality);
+    const usePersonalityFallback = transcriptPersonality === null && fallbackPersonality !== null;
+    const effectiveAcademic = fallbackAcademic ?? transcriptAcademic;
+    const effectivePersonality = fallbackPersonality ?? transcriptPersonality;
+    const roll = deriveRollupsNullable(effectiveAcademic, effectivePersonality);
     const strengthsArr = strengths?.slice(0, 10) ?? [];
     const improvementsArr = improvements?.slice(0, 10) ?? [];
     const statusCounts = questionBreakdown.reduce<Record<string, number>>((acc, item) => {
