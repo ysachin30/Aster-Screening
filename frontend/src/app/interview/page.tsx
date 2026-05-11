@@ -2394,21 +2394,21 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       <FocusCountdownOverlay value={focusCountdown} />
 
       <header className="surface-panel sticky top-0 z-40 shrink-0 border-b border-slate-200 shadow-sm">
-        <div className="px-4 py-4 lg:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-                <span className="text-sm font-bold tracking-widest">AE</span>
+        <div className="px-4 py-2.5 lg:px-6">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
+                <span className="text-xs font-bold tracking-widest">AE</span>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
-                <h1 className="text-xl font-semibold tracking-tight text-slate-900 leading-tight">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
+                <h1 className="text-lg font-semibold tracking-tight text-slate-900 leading-tight">
                   University Admission Screening
                 </h1>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <SignalBadge label="Candidate" value={name} />
               <SignalBadge label="Sequence" value={`#${candidateSequence}`} />
               <SignalBadge
@@ -2422,8 +2422,8 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
           </div>
 
           {!isIntroductionPhase && (
-            <div className="mt-5">
-              <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 <span>{questionSequenceLabel(question, q2Part)}</span>
                 <span>{Math.round(progressPercent)}% complete</span>
               </div>
@@ -2551,7 +2551,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                   <button
                     type="button"
                     onClick={() => navigateToNext()}
-                    className="btn-primary flex w-full max-w-sm ml-auto items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold"
+                    className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold"
                   >
                     Submit and continue
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2589,7 +2589,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                       publishFinish(payload);
                       setIsFinished(true);
                     }}
-                    className="flex w-full max-w-sm ml-auto items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm"
                   >
                     Finish interview
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2634,7 +2634,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 </div>
               </div>
 
-              <div className="surface-panel flex flex-1 flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200 min-h-0">
+              <div className="surface-panel flex flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200 h-[300px] shrink-0">
                 <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50/50">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
