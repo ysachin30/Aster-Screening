@@ -1511,7 +1511,7 @@ function QuestionPanel({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: "easeOut" }}
-      className="flex flex-1 flex-col gap-5 overflow-hidden"
+      className="flex flex-col gap-6"
     >
       <div className="surface-panel shrink-0 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1537,7 +1537,7 @@ function QuestionPanel({
 
           <button
             onClick={() => setShowContext(!showContext)}
-            className="btn-secondary inline-flex shrink-0 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
+            className="btn-secondary shrink-0 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
           >
             {showContext ? "Hide context" : "View context"}
           </button>
@@ -1559,7 +1559,7 @@ function QuestionPanel({
         </AnimatePresence>
       </div>
 
-      <div className="grid flex-1 gap-5 xl:grid-cols-[0.86fr_1.14fr] xl:min-h-0">
+      <div className="grid gap-6 xl:grid-cols-[0.86fr_1.14fr] items-start">
         <div className="surface-muted flex flex-col rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response guidance</p>
           <p className="mt-2 text-sm font-medium leading-relaxed text-slate-700">{responseGuidance}</p>
@@ -1587,7 +1587,7 @@ function QuestionPanel({
           </div>
         </div>
 
-        <div className="surface-panel flex min-h-[22rem] flex-col rounded-2xl p-3 sm:p-4 xl:min-h-0 shadow-sm border border-slate-200">
+        <div className="surface-panel flex flex-col rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-200">
           <div className="mb-3 flex items-center justify-between px-1 sm:px-2">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Media frame</p>
@@ -1607,7 +1607,7 @@ function QuestionPanel({
             )}
           </div>
 
-          <div className="relative flex-1 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 min-h-[22rem] xl:min-h-0 shadow-inner">
+          <div className="relative w-full aspect-video min-h-[280px] overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner flex items-center justify-center">
             <canvas
               ref={canvasRef}
               width={1280}
@@ -1618,15 +1618,15 @@ function QuestionPanel({
               onPointerCancel={onPointerUp}
               className={
                 isSatelliteInteractive
-                  ? `absolute inset-4 z-[2] h-[calc(100%-2rem)] w-[calc(100%-2rem)] touch-none rounded-[0.75rem] ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
+                  ? `absolute inset-0 z-[2] h-full w-full touch-none ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
                   : isDiff
-                    ? "absolute inset-4 z-[2] h-[calc(100%-2rem)] w-[calc(100%-2rem)] touch-none rounded-[0.75rem] cursor-grab active:cursor-grabbing"
+                    ? "absolute inset-0 z-[2] h-full w-full touch-none cursor-grab active:cursor-grabbing"
                     : "hidden"
               }
             />
 
             {!isInteractive && (
-              <div className="absolute inset-4 z-[2] flex items-center justify-center rounded-[0.75rem] border border-slate-700 bg-slate-800 p-4">
+              <div className="absolute inset-0 z-[2] flex items-center justify-center bg-slate-800 p-4">
                 {question.kind === "gif" ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain rounded-md" />
@@ -2412,26 +2412,26 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }
 
   return (
-    <div className="relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-slate-50">
+    <div className="relative flex min-h-screen flex-col bg-slate-50">
       <FocusCountdownOverlay value={focusCountdown} />
 
-      <header className="surface-panel relative z-20 shrink-0 border-b border-slate-200 shadow-sm">
+      <header className="surface-panel sticky top-0 z-40 shrink-0 border-b border-slate-200 shadow-sm">
         <div className="px-4 py-4 lg:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
                 <span className="text-sm font-bold tracking-widest">AE</span>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
-                <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">
+                <h1 className="text-xl font-semibold tracking-tight text-slate-900 leading-tight">
                   University Admission Screening
                 </h1>
-                <p className="text-sm font-medium text-slate-500">Candidate: {name}</p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              <SignalBadge label="Candidate" value={name} />
               <SignalBadge label="Sequence" value={`#${candidateSequence}`} />
               <SignalBadge
                 label="Camera"
@@ -2439,15 +2439,12 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 tone={cameraReady ? "live" : "warning"}
               />
               <SignalBadge label="Mic" value="Live" tone="live" />
-              {!isIntroductionPhase && (
-                <SignalBadge label="Progress" value={`${Math.round(progressPercent)}%`} />
-              )}
               <Timer minutes={10} onEnd={() => setEnded(true)} />
             </div>
           </div>
 
           {!isIntroductionPhase && (
-            <div className="mt-4">
+            <div className="mt-5">
               <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 <span>{questionSequenceLabel(question, q2Part)}</span>
                 <span>{Math.round(progressPercent)}% complete</span>
@@ -2465,8 +2462,8 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       </header>
 
       {isIntroductionPhase ? (
-        <div className="flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6">
-          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+        <div className="flex-1 px-4 py-8 lg:px-6 lg:py-12">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.08fr_0.92fr]">
             <motion.section
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2482,22 +2479,22 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 ready to explain your reasoning aloud.
               </p>
 
-              <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Duration</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">10 minutes</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Microphone</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">Required</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Camera</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">
                     {cameraReady ? "Ready" : "Check device"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Sequence</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">#{candidateSequence}</p>
                 </div>
@@ -2516,24 +2513,20 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
             <motion.section
               initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
-              className="grid gap-6"
+              className="grid gap-6 content-start"
             >
               <div className="surface-panel rounded-2xl p-6 shadow-sm border border-slate-200">
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                    <div className="flex items-center justify-center">
-                      <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
-                    </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 flex flex-col items-center">
+                    <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
                     <p className="mt-4 text-center text-sm font-semibold text-slate-900">{name}</p>
                     <p className="mt-1 text-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       {stateLabel[ended ? "ended" : avatarState.human]}
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-5">
-                    <div className="flex items-center justify-center">
-                      <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
-                    </div>
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-5 flex flex-col items-center">
+                    <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
                     <p className="mt-4 text-center text-sm font-semibold text-slate-900">AESTR Interviewer</p>
                     <p className="mt-1 text-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       {stateLabel[ended ? "ended" : avatarState.ai]}
@@ -2557,179 +2550,173 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden px-4 py-4 lg:px-6 lg:pb-6">
-          <div className="grid h-full gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-h-0 overflow-hidden">
-              <div className="surface-panel flex h-full flex-col rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
-                <div className="mb-4 grid gap-3 shrink-0 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Focus mode</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">Assessment shell active</p>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                      Minimal chrome, fullscreen prompt, and persistent timing controls.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AI status</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {avatarState.ai === "thinking" ? "Analyzing response" : "Listening live"}
-                    </p>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                      {avatarState.ai === "thinking"
-                        ? "The interviewer is evaluating your latest response."
-                        : "Your reasoning is being evaluated continuously as you speak."}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response mode</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {question.kind === "satellite" || question.kind === "differentiability"
-                        ? "Voice + interaction"
-                        : "Voice response"}
-                    </p>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                      Use the prompt and media frame together when the task requires it.
-                    </p>
-                  </div>
+        <div className="flex-1 px-4 py-8 lg:px-6 lg:py-10">
+          <div className="mx-auto grid max-w-[90rem] items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="flex flex-col gap-8 min-w-0">
+              <div className="grid gap-4 shrink-0 md:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Focus mode</p>
+                  <p className="mt-1.5 text-sm font-semibold text-slate-900">Assessment shell active</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                    Minimal chrome, fullscreen prompt, and persistent timing controls.
+                  </p>
                 </div>
-
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <AnimatePresence mode="wait">
-                    <QuestionPanel
-                      key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
-                      question={question}
-                      frozen={frozen}
-                      segmentId={`Q${question.id}${question.id === 2 ? `-P${q2Part}` : ""}`}
-                      onCanvasReady={publishPlayground}
-                      q2Part={q2Part}
-                      setQ2Part={setQ2Part}
-                      onActivitySnapshot={(snapshot) => {
-                        segmentInteractionRef.current.set(snapshot.segment_id, snapshot);
-                      }}
-                    />
-                  </AnimatePresence>
-                </div>
-
-                {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
-                  <div className="mt-5 shrink-0 border-t border-slate-200 pt-5">
-                    <button
-                      type="button"
-                      onClick={() => navigateToNext()}
-                      className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold"
-                    >
-                      Submit and continue
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-
-                {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
-                  <div className="mt-5 shrink-0 border-t border-slate-200 pt-5">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (currentSegmentRef.current) {
-                          const currentFrozen = freezeSegmentForUpload(currentSegmentRef.current, "finish_click");
-                          currentSegmentRef.current = null;
-                          if (currentFrozen) {
-                            await uploadSegmentArtifact(
-                              currentFrozen.segment,
-                              currentFrozen.reason,
-                              currentFrozen.activitySummary,
-                              currentFrozen.blobPromise,
-                            );
-                          }
-                        }
-                        const payload = {
-                          type: "question_changed",
-                          code: QUESTIONS.length - 1,
-                          questionId: question.id,
-                          question: question.question,
-                          kind: question.kind,
-                          finish: true,
-                        };
-                        publishFinish(payload);
-                        setIsFinished(true);
-                      }}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
-                    >
-                      Finish interview
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <aside className="min-h-0 overflow-hidden">
-              <div className="grid h-full gap-5 xl:grid-rows-[auto_auto_minmax(0,1fr)]">
-                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
-                    <div className="flex items-center gap-4">
-                      <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{name}</p>
-                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                          Candidate channel
-                        </p>
-                        <p className="mt-2 text-sm text-slate-600">
-                          {stateLabel[ended ? "ended" : avatarState.human]}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
-                    <div className="flex items-center gap-4">
-                      <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">AESTR Interviewer</p>
-                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                          Evaluation channel
-                        </p>
-                        <p className="mt-2 text-sm text-slate-600">
-                          {stateLabel[ended ? "ended" : avatarState.ai]}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Analysis state</p>
-                  <p className="mt-2 text-base font-semibold text-slate-900">
-                    {ended
-                      ? "Finalizing evaluation"
-                      : avatarState.ai === "thinking"
-                        ? "Analyzing response"
-                        : "Monitoring live answer"}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AI status</p>
+                  <p className="mt-1.5 text-sm font-semibold text-slate-900">
+                    {avatarState.ai === "thinking" ? "Analyzing response" : "Listening live"}
                   </p>
                   <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                    {ended
-                      ? "Your session has ended and the platform is packaging your final submission."
-                      : avatarState.ai === "thinking"
-                        ? "The interviewer is processing your latest response before continuing."
-                        : "Stay concise and speak clearly while the interviewer listens."}
+                    {avatarState.ai === "thinking"
+                      ? "The interviewer is evaluating your latest response."
+                      : "Your reasoning is being evaluated continuously as you speak."}
                   </p>
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response mode</p>
+                  <p className="mt-1.5 text-sm font-semibold text-slate-900">
+                    {question.kind === "satellite" || question.kind === "differentiability"
+                      ? "Voice + interaction"
+                      : "Voice response"}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                    Use the prompt and media frame together when the task requires it.
+                  </p>
+                </div>
+              </div>
 
-                <div className="surface-panel flex min-h-0 flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200">
-                  <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/50">
+              <AnimatePresence mode="wait">
+                <QuestionPanel
+                  key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
+                  question={question}
+                  frozen={frozen}
+                  segmentId={`Q${question.id}${question.id === 2 ? `-P${q2Part}` : ""}`}
+                  onCanvasReady={publishPlayground}
+                  q2Part={q2Part}
+                  setQ2Part={setQ2Part}
+                  onActivitySnapshot={(snapshot) => {
+                    segmentInteractionRef.current.set(snapshot.segment_id, snapshot);
+                  }}
+                />
+              </AnimatePresence>
+
+              {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
+                <div className="pt-2 pb-6">
+                  <button
+                    type="button"
+                    onClick={() => navigateToNext()}
+                    className="btn-primary flex w-full max-w-md mx-auto items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-semibold"
+                  >
+                    Submit and continue
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
+                <div className="pt-2 pb-6">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (currentSegmentRef.current) {
+                        const currentFrozen = freezeSegmentForUpload(currentSegmentRef.current, "finish_click");
+                        currentSegmentRef.current = null;
+                        if (currentFrozen) {
+                          await uploadSegmentArtifact(
+                            currentFrozen.segment,
+                            currentFrozen.reason,
+                            currentFrozen.activitySummary,
+                            currentFrozen.blobPromise,
+                          );
+                        }
+                      }
+                      const payload = {
+                        type: "question_changed",
+                        code: QUESTIONS.length - 1,
+                        questionId: question.id,
+                        question: question.question,
+                        kind: question.kind,
+                        finish: true,
+                      };
+                      publishFinish(payload);
+                      setIsFinished(true);
+                    }}
+                    className="flex w-full max-w-md mx-auto items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-6 py-4 text-base font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm"
+                  >
+                    Finish interview
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <aside className="xl:sticky xl:top-[120px] flex flex-col gap-6">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 shrink-0">
+                <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
+                  <div className="flex items-center gap-4">
+                    <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
-                      <p className="mt-0.5 text-sm font-medium text-slate-700">Live conversation log</p>
-                    </div>
-                    <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
-                      {transcript.length} entries
+                      <p className="text-sm font-semibold text-slate-900">{name}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Candidate channel
+                      </p>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {stateLabel[ended ? "ended" : avatarState.human]}
+                      </p>
                     </div>
                   </div>
-                  <AssessmentTranscriptView entries={transcript} />
                 </div>
+
+                <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
+                  <div className="flex items-center gap-4">
+                    <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">AESTR Interviewer</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Evaluation channel
+                      </p>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {stateLabel[ended ? "ended" : avatarState.ai]}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shrink-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Analysis state</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">
+                  {ended
+                    ? "Finalizing evaluation"
+                    : avatarState.ai === "thinking"
+                      ? "Analyzing response"
+                      : "Monitoring live answer"}
+                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                  {ended
+                    ? "Your session has ended and the platform is packaging your final submission."
+                    : avatarState.ai === "thinking"
+                      ? "The interviewer is processing your latest response before continuing."
+                      : "Stay concise and speak clearly while the interviewer listens."}
+                </p>
+              </div>
+
+              <div className="surface-panel flex flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200 h-[360px]">
+                <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/50">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
+                    <p className="mt-0.5 text-sm font-medium text-slate-700">Live conversation log</p>
+                  </div>
+                  <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
+                    {transcript.length} entries
+                  </div>
+                </div>
+                <AssessmentTranscriptView entries={transcript} />
               </div>
             </aside>
           </div>
