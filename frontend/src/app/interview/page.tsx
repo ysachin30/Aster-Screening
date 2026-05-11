@@ -2209,7 +2209,8 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
             t.includes("first question") ||
             t.includes("question 1") ||
             t.includes("question one") ||
-            t.includes("on your screen")
+            t.includes("on your screen") ||
+            t.includes("here is your first question") // Added this line
           ) {
             introEndedAtRef.current = Date.now();
             setIsIntroductionPhase(false);
