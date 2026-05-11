@@ -629,9 +629,6 @@ async def entrypoint(ctx: JobContext):
             "part": part_num,
             "question_key": segment_key,
             "status": "scored" if has_scored_signal else "insufficient_data",
-            "academic": scored.get("academic") if academic_signal else None,
-            "personality_snapshot": scored.get("personality") if personality_signal else None,
-            "question_score": _derive_question_score_value(scored.get("academic") if academic_signal else None),
             "summary": scored.get("summary", ""),
             "transcript_excerpt": transcript_excerpt,
             "transcript_confidence": coverage["confidence"],
@@ -639,6 +636,13 @@ async def entrypoint(ctx: JobContext):
             "needs_review": bool(scored.get("needs_review")) or not has_scored_signal,
             "activity_json": evidence_activity,
         }
+        if academic_signal:
+            snapshot["academic"] = scored.get("academic")
+            question_score_value = _derive_question_score_value(scored.get("academic"))
+            if question_score_value is not None:
+                snapshot["question_score"] = question_score_value
+        if personality_signal:
+            snapshot["personality_snapshot"] = scored.get("personality")
         question_scores[segment_key] = snapshot
         meta["finalized"] = True
         await _upsert_question_snapshot(snapshot)
