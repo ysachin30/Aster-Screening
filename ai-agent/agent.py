@@ -58,7 +58,7 @@ CRITICAL RULES:
    For Q2 Part 1 they see a theory/diagram slide only — discuss that slide (no trajectory drawing).
    For Q2 Parts 2–3 they use the satellite trajectory canvas — speak about what they draw there.
    When they are on Q1, discuss the scenario shown in Q1. Never discuss unrelated topics.
-7. If the student's answer is wrong or incomplete, do 1–2 short follow-up exchanges probing their reasoning (e.g. "Why do you think that?" or "Can you elaborate?"). NEVER reveal the correct answer. After at most 2 follow-up exchanges, regardless of correctness, instruct them to click "Submit & Next" (or for Q2 Parts 1–2 use "Next Part" per on-screen navigation).
+7. In question phase, you may ask AT MOST 2 short interrogative follow-ups for a question. NEVER reveal the correct answer. After those follow-ups, stop and instruct them to click "Submit & Next" (or for Q2 Parts 1–2 use "Next Part" per on-screen navigation).
 8. For Q2 Part 1 (theory slide): there is NO drawing — elicit a spoken answer about forces/orbit; you may probe briefly; then tell them to click "Next Part".
    For Q2 Parts 2–3: NO cross-questioning — let them draw trajectories on the canvas; assess from their drawing; use "Next Part" (part 2) or "Submit & Next" (after part 3) as appropriate.
 9. Be warm but rigorous. Push back gently on weak reasoning.
@@ -66,9 +66,11 @@ CRITICAL RULES:
 11. NEVER end the interview early. Do NOT say "thank you" / "we will get back to you soon" unless you receive an explicit FINISH signal (finish=true) from the system.
 12. Speak only in English.
 13. After you finish dictating a question or asking a follow-up, STOP and wait silently for the student. Do NOT repeat, rephrase, or restate the question on your own — only repeat if the student explicitly asks you to.
-14. NEVER state, paraphrase, confirm, or hint the answer or solution, even partially. Do not give away the final number, formula, interpretation, or next step.
-15. If the student is stuck or asks for help, give only a neutral prompt such as "What is your current thinking?" or "How would you approach it?" Never teach the solution.
-16. Do not repeat the same follow-up twice in one question. If you have already asked once, wait for the student.
+14. NEVER state, paraphrase, confirm, or hint the answer or solution, even partially. Do not give away the final number, formula, interpretation, next step, or any reasoning step.
+15. NEVER explain the concept, teach the method, give examples, summarize the diagram, or help solve the problem. Your job is only to ask and probe.
+16. If the student is silent or stuck, ask only one neutral prompt such as "What is your current thinking?" or "How would you approach it?" Then wait silently. Do not add any explanation.
+17. In question phase, after the question text, any extra sentence you speak must be an interrogative probe or a navigation instruction. If it is not a question, stay silent.
+18. Do not repeat the same follow-up twice in one question. If you have already asked once, wait for the student.
 """
 
 def build_instructions(student_name: str, questions: list[dict]) -> str:
@@ -93,9 +95,6 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         kind = q.get("kind", "text")
         parts.append(f"\n=== Question Q{qid} ({kind}) ===\n")
         parts.append(f"Question text: {q.get('question', '')}\n")
-        ctx = q.get("context") or ""
-        if ctx:
-            parts.append(f"Background context (do NOT read aloud verbatim):\n{ctx}\n")
         if kind == "text" or kind == "gif":
             parts.append(
                 f"SCREEN NARRATION for Q{qid}: When the student is on this question, briefly anchor what they see "
@@ -117,17 +116,9 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
             )
         if kind == "differentiability":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: When the student switches to Q3, say something like: "
-                "'On your screen you can see a graph of f(x) = |x|. There is a glowing cyan V-shaped curve, "
-                "a magenta dot marking the special point at x = 0 (the corner), and a yellow probe point you can drag. "
-                "As you drag it along the curve away from x = 0, you see a single yellow tangent line following it smoothly. "
-                "But watch what happens when the point reaches x = 0 — two tangent lines appear: "
-                "one with slope -1 coming from the left, another with slope +1 from the right. "
-                "So the question is: what does this tell you geometrically about continuity vs differentiability?' "
-                "Probe the student: 'Why do two tangent lines appear at x = 0?', "
-                "'Does the graph break at x = 0, or does it just have a sharp corner?', "
-                "'Can you generalize — what kinds of shapes on a graph would cause this?' "
-                "Keep the prompt open-ended; do not explain the geometry for them or reveal the answer.\n"
+                f"SCREEN NARRATION for Q{qid}: When the student switches to Q3, briefly anchor only what is visibly on screen "
+                "(a graph, a highlighted point, and a draggable probe), then ask the question. "
+                "Use only open-ended interrogative probes. Do not explain the geometry, tangent behavior, or answer.\n"
             )
     parts.append(
         "\nStart by greeting the student warmly by name. "
@@ -387,6 +378,14 @@ async def entrypoint(ctx: JobContext):
             r"\bminimum total time\b",
             r"\bthere are exactly\b",
             r"\bit means there(?: is|'s)\b",
+            r"\bit means\b",
+            r"\bthis means\b",
+            r"\byou need to\b",
+            r"\byoud need to\b",
+            r"\byou'd need to\b",
+            r"\bwould need to\b",
+            r"\bfor example\b",
+            r"\bbecause\b",
         ]
         if any(re.search(pattern, t) for pattern in generic_patterns):
             return True
@@ -760,13 +759,16 @@ async def entrypoint(ctx: JobContext):
 
         if qid == 2 and part_num == 1:
             interaction_line = (
-                "You may ask at most 2 short follow-up questions probing their verbal reasoning. "
-                "After at most 2 follow-ups or when their explanation is adequate, "
+                "You may ask at most 2 short interrogative follow-up questions probing their verbal reasoning. "
+                "If they stay silent, ask only one neutral prompt. After that, "
             )
         elif qid == 2 and part_num in (2, 3):
             interaction_line = "Do NOT cross-question. After they have drawn on the canvas, "
         else:
-            interaction_line = "After the student answers, do at most 2 short follow-up questions, then "
+            interaction_line = (
+                "After the student answers, do at most 2 short interrogative follow-up questions. "
+                "If they stay silent, ask only one neutral prompt. Then "
+            )
 
         draw_hint_block = ("\n".join(f" {h}" for h in extra_hints) + "\n") if extra_hints else ""
 
@@ -779,11 +781,12 @@ async def entrypoint(ctx: JobContext):
             + interaction_line
             + nav_line + " "
             "Never reveal, confirm, paraphrase, or hint the answer or solution. "
+            "Never explain the concept, method, diagram, or next step. "
             "If the student is stuck, ask only one short neutral prompt and do not explain the problem for them. "
+            "Every sentence after the question text must be either an interrogative probe or a navigation instruction. "
             "Do NOT end the interview. Do NOT say that the questions are complete, and do NOT say it was a pleasure speaking with the student yet."
             " After you finish speaking this turn, wait silently — do not repeat the question unless the student asks."
             f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
-            + (f"\nCONTEXT (do not read verbatim): {qctx}\n" if qctx else "")
             + draw_hint_block
         )
         try:
