@@ -24,7 +24,7 @@ type DualAvatarState = {
   ai: AvatarState;
   human: AvatarState;
 };
-type TranscriptEntry = { who: "ai" | "user"; text: string; id: number };
+type TranscriptEntry = { who: "ai" | "user"; text: string; id: number; updatedAt: number };
 type QuestionKind = "gif" | "satellite" | "differentiability" | "text";
 type Question = {
   id: number;
@@ -529,6 +529,25 @@ function TranscriptView({ entries }: { entries: TranscriptEntry[] }) {
       ))}
     </div>
   );
+}
+
+function normalizeTranscriptText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .trim();
+}
+
+function isTranscriptNearDuplicate(nextText: string, prevText: string) {
+  const next = normalizeTranscriptText(nextText);
+  const prev = normalizeTranscriptText(prevText);
+  if (!next || !prev) return false;
+  if (next === prev) return true;
+  const shorter = next.length <= prev.length ? next : prev;
+  const longer = next.length > prev.length ? next : prev;
+  if (shorter.length < 18) return false;
+  return longer.includes(shorter) && shorter.length / longer.length >= 0.82;
 }
 
 // Arrow helper for satellite canvas
@@ -1749,16 +1768,30 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   }, [room.localParticipant, room.name]);
 
   const upsertTranscript = useCallback((who: "ai" | "user", text: string, segId: string, isFinal: boolean) => {
-    if (!text.trim()) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
     if (/\[system\]/i.test(text)) return;
+    const now = Date.now();
     const existingEntryId = inProgressRef.current.get(segId);
     if (existingEntryId !== undefined) {
-      setTranscript(prev => prev.map(e => e.id === existingEntryId ? { ...e, text: text.trim() } : e));
+      setTranscript(prev => prev.map(e => e.id === existingEntryId ? { ...e, text: trimmed, updatedAt: now } : e));
       if (isFinal) inProgressRef.current.delete(segId);
     } else {
       const newId = ++transcriptIdRef.current;
-      inProgressRef.current.set(segId, newId);
-      setTranscript(prev => [...prev.slice(-60), { who, text: text.trim(), id: newId }]);
+      setTranscript(prev => {
+        const recentSameSpeaker = [...prev].reverse().filter((entry) => entry.who === who).slice(0, 4);
+        const duplicate = recentSameSpeaker.find((entry) =>
+          now - entry.updatedAt < 12000 && isTranscriptNearDuplicate(trimmed, entry.text),
+        );
+        if (duplicate) {
+          if (trimmed.length > duplicate.text.length + 6) {
+            return prev.map((entry) => entry.id === duplicate.id ? { ...entry, text: trimmed, updatedAt: now } : entry);
+          }
+          return prev;
+        }
+        inProgressRef.current.set(segId, newId);
+        return [...prev.slice(-60), { who, text: trimmed, id: newId, updatedAt: now }];
+      });
       if (isFinal) inProgressRef.current.delete(segId);
     }
   }, []);

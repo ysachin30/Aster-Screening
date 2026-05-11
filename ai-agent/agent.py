@@ -51,8 +51,7 @@ CRITICAL RULES:
 1. Keep every response SHORT, conversational, and human-like — 1 to 3 sentences MAX.
 2. Start with a 2-minute INTRODUCTION PHASE: greet the student warmly by name, ask if they are ready, then have a warm-up conversation to assess their confidence and communication skills. Ask simple questions like "How are you feeling today?", "What got you interested in engineering?", "Which subjects do you enjoy most?", "Any projects or hobbies you're proud of?". Keep it light and conversational.
 3. After about 2 minutes of warm-up (4-6 exchanges), transition smoothly: "Great! Now let's move to the first question."
-4. Once in the QUESTION PHASE, DESCRIBE what the student sees on their screen and then
-   ask the question — act like a teacher pointing at a diagram. Do NOT just read the text.
+4. Once in the QUESTION PHASE, say only the question text directly. Do not add any preamble, screen description, or lead-in before the question.
 5. IMPORTANT: Do NOT say "let's move to the next question". Instead, instruct the student to click the "Submit & Next" button on the screen when they are ready to proceed.
 6. ALWAYS stay on-topic for whichever question is currently visible on the screen.
    For Q2 Part 1 they see a theory/diagram slide only — discuss that slide (no trajectory drawing).
@@ -84,8 +83,7 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         "\n--- INTERVIEW QUESTIONS ---\n",
         f"You have {len(questions)} question(s) to work through with the student. ",
         "The student switches between questions via tabs Q1, Q2 on their screen. ",
-        "You can see their screen through the video stream — always base your commentary on "
-        "WHAT IS CURRENTLY VISIBLE on their screen. ",
+        "You can see their screen through the video stream, but when a question opens you must speak the question text directly with no preamble. ",
         "Ask the questions in order (Q1 first). Move to the next once they've given a reasonable answer. ",
         "IMPORTANT: Internally VALIDATE their answers against the expected answer rubric below. ",
         "Do NOT read the expected answer aloud.\n",
@@ -97,35 +95,35 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         parts.append(f"Question text: {q.get('question', '')}\n")
         if kind == "text" or kind == "gif":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: When the student is on this question, briefly anchor what they see "
-                "('On your screen you can see...'). "
-                "Do NOT repeat the full question text yourself — the system already dictates it verbatim when Q opens; "
+                f"QUESTION DELIVERY for Q{qid}: Speak the question text directly when it opens. "
+                "Do NOT add any screen narration, framing sentence, or introduction before the question. "
+                "Do NOT repeat the full question text yourself after it has been said once; "
                 "after it is read once, probe their reasoning only. Never give hints, steps, or the solution.\n"
             )
         if kind == "satellite":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: Q2 has three parts shown one at a time on screen. "
-                "Speak ONLY about the part currently visible — never preview or summarize other parts.\n"
-                "• When Part 1 is visible: it is a THEORY SLIDE with a diagram/GIF only — there is NO trajectory drawing. "
-                "Briefly anchor what they see, ask for a spoken explanation (forces, directions, orbit idea). "
+                f"QUESTION DELIVERY for Q{qid}: Q2 has three parts shown one at a time on screen. "
+                "Speak ONLY the currently visible part's question text when it opens — never preview or summarize other parts.\n"
+                "• When Part 1 is visible: it is a THEORY SLIDE only — there is NO trajectory drawing. "
+                "Ask for a spoken explanation after the question text. "
                 "Do NOT mention drawing or 'Draw trajectory'. After a reasonable verbal answer (and at most 2 short follow-ups), tell them to click Next Part.\n"
                 "• When Part 2 or Part 3 is visible: they use the INTERACTIVE SATELLITE CANVAS. "
-                "Read that part's text calmly, tell them to draw their answer with Draw trajectory / drawing controls, then wait silently. "
+                "Read that part's question text directly, tell them to draw their answer with Draw trajectory / drawing controls, then wait silently. "
                 "After they draw, tell them to click Next Part (part 2) or Submit & Next (part 3 only). "
                 "Do NOT reveal answers or partial hints. Do NOT conclude the interview between parts.\n"
             )
         if kind == "differentiability":
             parts.append(
-                f"SCREEN NARRATION for Q{qid}: When the student switches to Q3, briefly anchor only what is visibly on screen "
-                "(a graph, a highlighted point, and a draggable probe), then ask the question. "
-                "Use only open-ended interrogative probes. Do not explain the geometry, tangent behavior, or answer.\n"
+                f"QUESTION DELIVERY for Q{qid}: Speak the question text directly when Q3 opens. "
+                "Do not describe the graph before the question. Use only open-ended interrogative probes. "
+                "Do not explain the geometry, tangent behavior, or answer.\n"
             )
     parts.append(
         "\nStart by greeting the student warmly by name. "
         "Begin with a 2-minute warm-up conversation to assess confidence and communication. "
         "After 4-6 exchanges (about 2 minutes), transition to the questions: 'Great! Now let's move to the first question.' "
-        "For Q1, give only a short on-screen anchor; do not re-read the full question aloud yourself "
-        "(the system reads QUESTION TEXT verbatim once when the question opens). "
+        "For every question, say the question text directly and do not add any preamble before it. "
+        "Do not re-read the full question aloud after that first dictation. "
         "If the student is wrong, respond with a neutral follow-up question, not the solution."
     )
     return "".join(parts)
@@ -358,6 +356,8 @@ async def entrypoint(ctx: JobContext):
     current_segment_key: dict[str, str | None] = {"value": None}
     last_question_event_id: dict[str, str | None] = {"value": None}
     last_answer_guardrail_at: dict[str, float] = {"value": 0.0}
+    inflight_question_event_ids: set[str] = set()
+    pending_segment_finalize_tasks: set[asyncio.Task] = set()
 
     def _line_prefix() -> str:
         qid = active_q.get("qid")
@@ -367,6 +367,40 @@ async def entrypoint(ctx: JobContext):
         if part is not None:
             return f"[Q{qid}-P{part}]"
         return f"[Q{qid}]"
+
+    def _normalize_prompt_text(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+    def _looks_like_question_repeat(text: str, segment_key: str | None) -> bool:
+        if not segment_key:
+            return False
+        meta = segment_meta.get(segment_key) or {}
+        question_text = _normalize_prompt_text(str(meta.get("question_text") or ""))
+        spoken = _normalize_prompt_text(text)
+        if not question_text or not spoken:
+            return False
+        if spoken.startswith("this is question"):
+            return True
+        if len(question_text) >= 24 and question_text in spoken:
+            return True
+        if len(spoken) >= 24 and spoken in question_text and len(spoken) / max(len(question_text), 1) >= 0.7:
+            return True
+        return False
+
+    def _schedule_segment_finalize(segment_key: str | None, reason: str) -> None:
+        if not segment_key:
+            return
+        task = asyncio.create_task(_finalize_question_segment(segment_key, reason))
+        pending_segment_finalize_tasks.add(task)
+
+        def _done(t: asyncio.Task) -> None:
+            pending_segment_finalize_tasks.discard(t)
+            try:
+                t.result()
+            except Exception as e:
+                logger.warning("background segment finalize failed for %s: %s", segment_key, e)
+
+        task.add_done_callback(_done)
 
     def _looks_like_answer_leak(text: str) -> bool:
         t = re.sub(r"\s+", " ", (text or "").lower()).strip()
@@ -565,21 +599,25 @@ async def entrypoint(ctx: JobContext):
             api_key=google_key,
         )
 
+        academic_signal = _has_grade_signal(scored.get("academic"), academic=True)
+        personality_signal = _has_grade_signal(scored.get("personality"), academic=False)
+        has_scored_signal = academic_signal or personality_signal
+
         snapshot = {
             "student_id": student_identity,
             "room": ctx.room.name,
             "question_id": qid,
             "part": part_num,
             "question_key": segment_key,
-            "status": "scored" if scored.get("academic") else "insufficient_data",
-            "academic": scored.get("academic"),
-            "personality_snapshot": scored.get("personality"),
-            "question_score": _derive_question_score_value(scored.get("academic")),
+            "status": "scored" if has_scored_signal else "insufficient_data",
+            "academic": scored.get("academic") if academic_signal else None,
+            "personality_snapshot": scored.get("personality") if personality_signal else None,
+            "question_score": _derive_question_score_value(scored.get("academic") if academic_signal else None),
             "summary": scored.get("summary", ""),
             "transcript_excerpt": transcript_excerpt,
             "transcript_confidence": coverage["confidence"],
             "grading_mode": scored.get("grading_mode", "transcript"),
-            "needs_review": bool(scored.get("needs_review")),
+            "needs_review": bool(scored.get("needs_review")) or not has_scored_signal,
             "activity_json": evidence_activity,
         }
         question_scores[segment_key] = snapshot
@@ -607,6 +645,9 @@ async def entrypoint(ctx: JobContext):
         for line in transcript_lines:
             logger.info("  %s", line)
 
+        if pending_segment_finalize_tasks:
+            logger.info("Waiting for %d background segment finalize task(s)", len(pending_segment_finalize_tasks))
+            await asyncio.gather(*list(pending_segment_finalize_tasks), return_exceptions=True)
         await _finalize_question_segment(current_segment_key["value"], reason)
         graded = await _grade(transcript, google_key)
         live_aggregate = _aggregate_question_snapshots(list(question_scores.values()))
@@ -668,7 +709,29 @@ async def entrypoint(ctx: JobContext):
             seg_key = current_segment_key["value"]
             if seg_key:
                 segment_lines.setdefault(seg_key, []).append(line)
+                meta = segment_meta.get(seg_key)
+                if meta is not None:
+                    meta["agent_turns"] = int(meta.get("agent_turns") or 0) + 1
             logger.info("📝 AI: %s", text)
+            meta = segment_meta.get(seg_key) if seg_key else None
+            if (
+                not interview_finished["value"]
+                and seg_key
+                and meta is not None
+                and int(meta.get("agent_turns") or 0) > 1
+                and _looks_like_question_repeat(text, seg_key)
+            ):
+                logger.warning("⚠️ Question repeat detected for %s. Forcing silent wait.", seg_key)
+                try:
+                    session.generate_reply(
+                        instructions=(
+                            "Do not restate the question. Do not paraphrase it again. "
+                            "Wait silently for the student's answer. "
+                            "If you speak next, it must be only one short interrogative probe."
+                        )
+                    )
+                except Exception as e:
+                    logger.warning("Could not inject anti-repeat notice: %s", e)
             if (
                 not interview_finished["value"]
                 and _looks_like_answer_leak(text)
@@ -715,88 +778,35 @@ async def entrypoint(ctx: JobContext):
         logger.info("📨 question_changed received: code=%s Q%s (%s) part=%s finish=%s event=%s", code, qid, kind, part_num, finish, event_id)
 
         if not finish:
-            if event_id and event_id == last_question_event_id["value"]:
+            if event_id and (event_id == last_question_event_id["value"] or event_id in inflight_question_event_ids):
                 logger.info("↺ duplicate question_changed eventId=%s — ignoring retry", event_id)
                 return
             if active_q.get("qid") == qid and active_q.get("part") == part_num:
                 logger.info("↺ same screen state Q%s part=%s — not re-dictating", qid, part_num)
                 return
+            if event_id:
+                inflight_question_event_ids.add(event_id)
+                last_question_event_id["value"] = event_id
 
-        if finish:
-            interview_finished["value"] = True
-            stop_event.set()
-            notice = "The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
-            try:
-                session.generate_reply(instructions=notice)
-            except Exception as e:
-                logger.warning("Could not inject finish notice: %s", e)
-            asyncio.create_task(_finalize_and_post("finish_signal"))
-            return
-
-        next_segment_key = _segment_key(qid, part_num)
-        prev_segment_key = current_segment_key["value"]
-        if prev_segment_key and prev_segment_key != next_segment_key:
-            await _finalize_question_segment(prev_segment_key, "question_changed")
-
-        extra_hints: list[str] = []
-        if kind == "satellite" and qid == 2:
-            if part_num in (2, 3):
-                extra_hints.append(
-                    "For this screen only: explicitly tell them to use the Draw Trajectory / drawing controls and draw their answer on the canvas."
-                )
-            elif part_num == 1:
-                extra_hints.append(
-                    "This is Part 1 THEORY ONLY: there is NO drawing canvas — the student answers verbally from the diagram. "
-                    "Do NOT tell them to draw. When finished, tell them to click Next Part."
-                )
-
-        q_label = f"Question {qid}" + (f", Part {part_num}" if part_num is not None else "")
-        nav_line = "instruct them to click Submit & Next."
-        if qid == 2 and part_num in (1, 2):
-            nav_line = "instruct them to click Next Part."
-        elif qid == 2 and part_num == 3:
-            nav_line = "instruct them to click Submit & Next."
-
-        if qid == 2 and part_num == 1:
-            interaction_line = (
-                "You may ask at most 2 short interrogative follow-up questions probing their verbal reasoning. "
-                "If they stay silent, ask only one neutral prompt. After that, "
-            )
-        elif qid == 2 and part_num in (2, 3):
-            interaction_line = "Do NOT cross-question. After they have drawn on the canvas, "
-        else:
-            interaction_line = (
-                "After the student answers, do at most 2 short interrogative follow-up questions. "
-                "If they stay silent, ask only one neutral prompt. Then "
-            )
-
-        draw_hint_block = ("\n".join(f" {h}" for h in extra_hints) + "\n") if extra_hints else ""
-
-        notice = (
-            f"HARD OVERRIDE: The UI is now showing {q_label} (code={code}, kind={kind}). "
-            "You must START SPEAKING IMMEDIATELY without asking for confirmation. "
-            "Speak only in English. "
-            "First say: 'This is " + q_label.lower() + ".' "
-            "Then read the QUESTION TEXT BELOW VERBATIM, then ask the student for their answer. "
-            + interaction_line
-            + nav_line + " "
-            "Never reveal, confirm, paraphrase, or hint the answer or solution. "
-            "Never explain the concept, method, diagram, or next step. "
-            "If the student is stuck, ask only one short neutral prompt and do not explain the problem for them. "
-            "Every sentence after the question text must be either an interrogative probe or a navigation instruction. "
-            "Do NOT end the interview. Do NOT say that the questions are complete, and do NOT say it was a pleasure speaking with the student yet."
-            " After you finish speaking this turn, wait silently — do not repeat the question unless the student asks."
-            f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
-            + draw_hint_block
-        )
         try:
-            session.generate_reply(instructions=notice)
-            last_question_event_id["value"] = event_id
+            if finish:
+                interview_finished["value"] = True
+                stop_event.set()
+                notice = "The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
+                try:
+                    session.generate_reply(instructions=notice)
+                except Exception as e:
+                    logger.warning("Could not inject finish notice: %s", e)
+                asyncio.create_task(_finalize_and_post("finish_signal"))
+                return
+
+            next_segment_key = _segment_key(qid, part_num)
+            prev_segment_key = current_segment_key["value"]
             active_q["qid"] = qid
             active_q["part"] = part_num
             current_segment_key["value"] = next_segment_key
             if next_segment_key:
-                segment_meta.setdefault(
+                meta = segment_meta.setdefault(
                     next_segment_key,
                     {
                         "question_id": int(qid),
@@ -806,10 +816,77 @@ async def entrypoint(ctx: JobContext):
                         "context": qctx,
                         "started_at": time.time(),
                         "finalized": False,
+                        "agent_turns": 0,
                     },
                 )
-        except Exception as e:
-            logger.warning("Could not inject question_changed notice: %s", e)
+                meta["question_text"] = qtext
+                meta["kind"] = kind
+                meta["part"] = int(part_num or 0)
+                meta["agent_turns"] = 0
+
+            if prev_segment_key and prev_segment_key != next_segment_key:
+                _schedule_segment_finalize(prev_segment_key, "question_changed")
+
+            extra_hints: list[str] = []
+            if kind == "satellite" and qid == 2:
+                if part_num in (2, 3):
+                    extra_hints.append(
+                        "For this screen only: explicitly tell them to use the Draw Trajectory / drawing controls and draw their answer on the canvas."
+                    )
+                elif part_num == 1:
+                    extra_hints.append(
+                        "This is Part 1 THEORY ONLY: there is NO drawing canvas — the student answers verbally from the diagram. "
+                        "Do NOT tell them to draw. When finished, tell them to click Next Part."
+                    )
+
+            q_label = f"Question {qid}" + (f", Part {part_num}" if part_num is not None else "")
+            nav_line = "instruct them to click Submit & Next."
+            if qid == 2 and part_num in (1, 2):
+                nav_line = "instruct them to click Next Part."
+            elif qid == 2 and part_num == 3:
+                nav_line = "instruct them to click Submit & Next."
+
+            if qid == 2 and part_num == 1:
+                interaction_line = (
+                    "You may ask at most 2 short interrogative follow-up questions probing their verbal reasoning. "
+                    "If they stay silent, ask only one neutral prompt. After that, "
+                )
+            elif qid == 2 and part_num in (2, 3):
+                interaction_line = "Do NOT cross-question. After they have drawn on the canvas, "
+            else:
+                interaction_line = (
+                    "After the student answers, do at most 2 short interrogative follow-up questions. "
+                    "If they stay silent, ask only one neutral prompt. Then "
+                )
+
+            draw_hint_block = ("\n".join(f" {h}" for h in extra_hints) + "\n") if extra_hints else ""
+
+            notice = (
+                f"HARD OVERRIDE: The UI is now showing {q_label} (code={code}, kind={kind}). "
+                "You must START SPEAKING IMMEDIATELY without asking for confirmation. "
+                "Speak only in English. "
+                "Start directly with the QUESTION TEXT BELOW VERBATIM exactly once. "
+                "Do not say any intro line, label, greeting, screen description, or framing sentence before the question text. "
+                "After the question text, ask for the student's answer. "
+                + interaction_line
+                + nav_line + " "
+                "Never reveal, confirm, paraphrase, or hint the answer or solution. "
+                "Never explain the concept, method, diagram, or next step. "
+                "If the student is stuck, ask only one short neutral prompt and do not explain the problem for them. "
+                "Never restate the question after this first dictation unless the student explicitly asks you to repeat it. "
+                "Every sentence after the question text must be either an interrogative probe or a navigation instruction. "
+                "Do NOT end the interview. Do NOT say that the questions are complete, and do NOT say it was a pleasure speaking with the student yet."
+                " After you finish speaking this turn, wait silently — do not repeat the question unless the student asks."
+                f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
+                + draw_hint_block
+            )
+            try:
+                session.generate_reply(instructions=notice)
+            except Exception as e:
+                logger.warning("Could not inject question_changed notice: %s", e)
+        finally:
+            if event_id:
+                inflight_question_event_ids.discard(event_id)
 
     # Listen for question_changed data messages from the frontend
     @ctx.room.on("data_received")
@@ -1065,6 +1142,24 @@ def _normalize_segment_grade_payload(data: dict) -> dict:
     return normalized
 
 
+def _has_any_grade_signal(payload: dict | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    return _has_grade_signal(payload.get("academic"), academic=True) or _has_grade_signal(
+        payload.get("personality"), academic=False
+    )
+
+
+def _insufficient_segment_result(summary: str) -> dict:
+    return {
+        "academic": {},
+        "personality": {},
+        "summary": summary,
+        "needs_review": True,
+        "grading_mode": "insufficient_data",
+    }
+
+
 def _derive_question_score_value(academic: dict | None) -> float | None:
     if not isinstance(academic, dict):
         return None
@@ -1096,12 +1191,12 @@ def _aggregate_question_snapshots(items: list[dict]) -> dict:
     academic_items = [
         (item.get("academic"), _weight(item))
         for item in items
-        if isinstance(item.get("academic"), dict)
+        if isinstance(item.get("academic"), dict) and _has_grade_signal(item.get("academic"), academic=True)
     ]
     personality_items = [
         (item.get("personality_snapshot"), _weight(item))
         for item in items
-        if isinstance(item.get("personality_snapshot"), dict)
+        if isinstance(item.get("personality_snapshot"), dict) and _has_grade_signal(item.get("personality_snapshot"), academic=False)
     ]
 
     def _avg_metric(weighted_dicts: list[tuple[dict, float]], key: str) -> float | None:
@@ -1340,6 +1435,8 @@ async def _grade_question_segment(
     transcript_excerpt = transcript_excerpt.strip()
     needs_review = bool(coverage.get("likely_capture_failure"))
     prefer_audio = bool(coverage.get("weak_transcript")) and bool(audio_base64 and audio_mime_type)
+    if not transcript_excerpt and not (audio_base64 and audio_mime_type):
+        return _insufficient_segment_result("Insufficient capture data for reliable automatic grading.")
     prompt = _render_prompt(
         QUESTION_GRADING_PROMPT,
         {
@@ -1358,7 +1455,9 @@ async def _grade_question_segment(
             normalized = _normalize_segment_grade_payload(parsed)
             normalized["grading_mode"] = "transcript"
             normalized["needs_review"] = bool(normalized.get("needs_review")) or needs_review
-            return normalized
+            if _has_any_grade_signal(normalized):
+                return normalized
+            logger.info("segment transcript grading returned no usable signal for %s", question_key)
         except Exception as text_err:
             logger.warning("segment transcript grading failed for %s: %s", question_key, text_err)
 
@@ -1379,18 +1478,14 @@ async def _grade_question_segment(
             parsed = await asyncio.to_thread(_generate_json_from_audio, audio_prompt, audio_bytes, audio_mime_type, api_key)
             normalized = _normalize_segment_grade_payload(parsed)
             normalized["grading_mode"] = "audio_fallback"
-            normalized["needs_review"] = bool(normalized.get("needs_review"))
-            return normalized
+            normalized["needs_review"] = bool(normalized.get("needs_review")) or needs_review
+            if _has_any_grade_signal(normalized):
+                return normalized
+            logger.info("segment audio grading returned no usable signal for %s", question_key)
         except Exception as audio_err:
             logger.warning("segment audio fallback failed for %s: %s", question_key, audio_err)
 
-    return {
-        "academic": {},
-        "personality": {},
-        "summary": "Insufficient capture data for reliable automatic grading.",
-        "needs_review": True,
-        "grading_mode": "insufficient_data",
-    }
+    return _insufficient_segment_result("Insufficient capture data for reliable automatic grading.")
 
 
 async def _grade(transcript: str, api_key: str) -> dict:
