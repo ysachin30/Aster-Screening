@@ -77,6 +77,24 @@ type SegmentDescriptor = {
   started_at_ms: number;
 };
 
+function buildDefaultInteractionSnapshot(segment: SegmentDescriptor): QuestionInteractionSnapshot {
+  return {
+    segment_id: segment.segment_id,
+    question_id: segment.question_id,
+    part: segment.part,
+    question_key: segment.question_key,
+    kind: segment.kind,
+    has_drawing: false,
+    stroke_count: 0,
+    total_stroke_points: 0,
+    draw_mode: false,
+    context_open: false,
+    sat_angle: null,
+    diff_x: null,
+    updated_at: Date.now(),
+  };
+}
+
 const Q2_PART_1 = "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.";
 const Q2_PART_2 = "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?";
 const Q2_PART_3 = "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?";
@@ -1511,10 +1529,10 @@ function QuestionPanel({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: "easeOut" }}
-      className="flex flex-col gap-6"
+      className="flex flex-col flex-1 gap-4 min-h-0"
     >
-      <div className="surface-panel shrink-0 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <div className="surface-panel shrink-0 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm">
@@ -1530,7 +1548,7 @@ function QuestionPanel({
               )}
             </div>
 
-            <h2 className="mt-4 max-w-4xl text-2xl font-semibold leading-snug text-slate-900 sm:text-3xl">
+            <h2 className="mt-3 max-w-4xl text-xl font-semibold leading-snug text-slate-900 sm:text-2xl">
               {displayedQuestion}
             </h2>
           </div>
@@ -1559,121 +1577,35 @@ function QuestionPanel({
         </AnimatePresence>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.86fr_1.14fr] items-start">
-        <div className="surface-muted flex flex-col rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response guidance</p>
-          <p className="mt-2 text-sm font-medium leading-relaxed text-slate-700">{responseGuidance}</p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Input mode</p>
-              <p className="mt-1.5 text-sm font-semibold text-slate-900">
-                {isInteractive ? "Interactive response" : "Voice response"}
-              </p>
-              <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                {isInteractive
-                  ? "Manipulate the visual frame while explaining your reasoning aloud."
-                  : "Think aloud clearly so the interviewer can assess your reasoning process."}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Assessment note</p>
-              <p className="mt-1.5 text-sm font-semibold text-slate-900">The interviewer sees this panel live</p>
-              <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                Keep your explanation structured and use the visual region when it supports your answer.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="surface-panel flex flex-col rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-200">
-          <div className="mb-3 flex items-center justify-between px-1 sm:px-2">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Media frame</p>
-              <p className="mt-0.5 text-xs font-medium text-slate-700">
-                {isInteractive ? "Use the workspace to support your response." : "Review the prompt visual before answering."}
-              </p>
-            </div>
-
-            {isSatelliteInteractive && strokes.length > 0 && (
-              <button
-                onClick={clearStroke}
-                disabled={frozen}
-                className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40"
-              >
-                Clear drawing
-              </button>
-            )}
-          </div>
-
-          <div className="relative w-full aspect-video min-h-[280px] overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner flex items-center justify-center">
-            <canvas
-              ref={canvasRef}
-              width={1280}
-              height={720}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-              className={
-                isSatelliteInteractive
-                  ? `absolute inset-0 z-[2] h-full w-full touch-none ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
-                  : isDiff
-                    ? "absolute inset-0 z-[2] h-full w-full touch-none cursor-grab active:cursor-grabbing"
-                    : "hidden"
-              }
-            />
-
-            {!isInteractive && (
-              <div className="absolute inset-0 z-[2] flex items-center justify-center bg-slate-800 p-4">
-                {question.kind === "gif" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain rounded-md" />
-                ) : isQ2TheoryPart ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={Q2_THEORY_GIF_URL} alt="Satellite theory visual" className="h-full w-full object-contain rounded-md" />
-                ) : isQ4BridgeGif ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="h-full w-full object-contain rounded-md" />
-                ) : isQ5LogicGif ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="h-full w-full object-contain rounded-md" />
-                ) : (
-                  <div className="max-w-xl rounded-xl border border-slate-600 bg-slate-700/50 p-6 text-center shadow-sm">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Visual prompt</p>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                      Use the question text and respond aloud when you are ready to proceed.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="surface-muted shrink-0 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="surface-panel flex flex-col flex-1 rounded-2xl p-3 shadow-sm border border-slate-200 min-h-0">
+        <div className="mb-3 flex items-center justify-between px-1 sm:px-2">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Answer area</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-              Speak clearly, keep your reasoning structured, and use the controls below when the task requires interaction.
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Media frame</p>
+            <p className="mt-0.5 text-xs font-medium text-slate-700">
+              {isInteractive ? "Use the workspace to support your response." : "Review the prompt visual before answering."}
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[20rem]">
+          <div className="flex flex-wrap items-center gap-2">
             {isSatelliteInteractive && (
               <button
                 onClick={toggleDrawMode}
                 disabled={frozen}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold transition-all disabled:opacity-40 ${
-                  drawMode
-                    ? "border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm"
-                    : "btn-secondary"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40 ${
+                  drawMode ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
                 }`}
               >
                 {drawMode ? "Switch to drag mode" : "Enable drawing mode"}
+              </button>
+            )}
+            
+            {isSatelliteInteractive && strokes.length > 0 && (
+              <button
+                onClick={clearStroke}
+                disabled={frozen}
+                className="rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+              >
+                Clear drawing
               </button>
             )}
 
@@ -1686,12 +1618,56 @@ function QuestionPanel({
                   setQ2Part((p) => Math.min(3, p + 1));
                 }}
                 disabled={frozen || !canAdvanceQ2Part}
-                className="btn-primary rounded-xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg bg-indigo-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
               >
-                {canAdvanceQ2Part ? "Continue to next part" : "Complete the drawing to continue"}
+                {canAdvanceQ2Part ? "Next part" : "Complete drawing"}
               </button>
             )}
           </div>
+        </div>
+
+        <div className="relative w-full flex-1 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner flex items-center justify-center min-h-[200px]">
+          <canvas
+            ref={canvasRef}
+            width={1280}
+            height={720}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            className={
+              isSatelliteInteractive
+                ? `absolute inset-0 z-[2] h-full w-full object-contain touch-none ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
+                : isDiff
+                  ? "absolute inset-0 z-[2] h-full w-full object-contain touch-none cursor-grab active:cursor-grabbing"
+                  : "hidden"
+            }
+          />
+
+          {!isInteractive && (
+            <div className="absolute inset-0 z-[2] flex items-center justify-center bg-slate-800 p-4">
+              {question.kind === "gif" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain rounded-md" />
+              ) : isQ2TheoryPart ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={Q2_THEORY_GIF_URL} alt="Satellite theory visual" className="h-full w-full object-contain rounded-md" />
+              ) : isQ4BridgeGif ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="h-full w-full object-contain rounded-md" />
+              ) : isQ5LogicGif ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="h-full w-full object-contain rounded-md" />
+              ) : (
+                <div className="max-w-xl rounded-xl border border-slate-600 bg-slate-700/50 p-6 text-center shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Visual prompt</p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                    Use the question text and respond aloud when you are ready to proceed.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -1945,6 +1921,8 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       current.ai_active_since = null;
     }
     segmentMetricsRef.current = current;
+    const latestInteraction =
+      segmentInteractionRef.current.get(segment.segment_id) ?? buildDefaultInteractionSnapshot(segment);
     return {
       segment_id: segment.segment_id,
       question_key: segment.question_key,
@@ -1957,7 +1935,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       student_speaking_ms: current.student_speaking_ms,
       ai_speaking_ms: current.ai_speaking_ms,
       first_response_latency_ms: current.first_response_latency_ms,
-      latest_interaction: segmentInteractionRef.current.get(segment.segment_id) ?? null,
+      latest_interaction: latestInteraction,
     };
   }, []);
 
@@ -2297,7 +2275,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       : null;
 
     currentSegmentRef.current = nextSegment;
-    segmentInteractionRef.current.set(nextSegment.segment_id, null);
+    segmentInteractionRef.current.set(nextSegment.segment_id, buildDefaultInteractionSnapshot(nextSegment));
     resetSegmentMetrics(nextSegment.started_at_ms);
     flushedSegmentKeysRef.current.delete(nextSegment.segment_id);
 
@@ -2550,41 +2528,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
           </div>
         </div>
       ) : (
-        <div className="flex-1 px-4 py-8 lg:px-6 lg:py-10">
-          <div className="mx-auto grid max-w-[90rem] items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <section className="flex flex-col gap-8 min-w-0">
-              <div className="grid gap-4 shrink-0 md:grid-cols-3">
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Focus mode</p>
-                  <p className="mt-1.5 text-sm font-semibold text-slate-900">Assessment shell active</p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                    Minimal chrome, fullscreen prompt, and persistent timing controls.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AI status</p>
-                  <p className="mt-1.5 text-sm font-semibold text-slate-900">
-                    {avatarState.ai === "thinking" ? "Analyzing response" : "Listening live"}
-                  </p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                    {avatarState.ai === "thinking"
-                      ? "The interviewer is evaluating your latest response."
-                      : "Your reasoning is being evaluated continuously as you speak."}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response mode</p>
-                  <p className="mt-1.5 text-sm font-semibold text-slate-900">
-                    {question.kind === "satellite" || question.kind === "differentiability"
-                      ? "Voice + interaction"
-                      : "Voice response"}
-                  </p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                    Use the prompt and media frame together when the task requires it.
-                  </p>
-                </div>
-              </div>
-
+        <div className="flex-1 overflow-hidden p-4 lg:p-6 flex flex-col min-h-0">
+          <div className="mx-auto flex h-full w-full max-w-[90rem] gap-6 flex-col xl:flex-row min-h-0">
+            <section className="flex flex-1 flex-col gap-4 min-w-0 min-h-0">
               <AnimatePresence mode="wait">
                 <QuestionPanel
                   key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
@@ -2601,14 +2547,14 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               </AnimatePresence>
 
               {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
-                <div className="pt-2 pb-6">
+                <div className="shrink-0 pt-2 pb-2">
                   <button
                     type="button"
                     onClick={() => navigateToNext()}
-                    className="btn-primary flex w-full max-w-md mx-auto items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-semibold"
+                    className="btn-primary flex w-full max-w-sm ml-auto items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold"
                   >
                     Submit and continue
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                     </svg>
                   </button>
@@ -2616,7 +2562,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               )}
 
               {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
-                <div className="pt-2 pb-6">
+                <div className="shrink-0 pt-2 pb-2">
                   <button
                     type="button"
                     onClick={async () => {
@@ -2643,10 +2589,10 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                       publishFinish(payload);
                       setIsFinished(true);
                     }}
-                    className="flex w-full max-w-md mx-auto items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-6 py-4 text-base font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm"
+                    className="flex w-full max-w-sm ml-auto items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm"
                   >
                     Finish interview
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
                     </svg>
@@ -2655,32 +2601,32 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               )}
             </section>
 
-            <aside className="xl:sticky xl:top-[120px] flex flex-col gap-6">
+            <aside className="flex flex-col w-full xl:w-[320px] shrink-0 gap-4 min-h-0">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 shrink-0">
-                <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="surface-panel rounded-2xl p-4 shadow-sm border border-slate-200">
                   <div className="flex items-center gap-4">
                     <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{name}</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                         Candidate channel
                       </p>
-                      <p className="mt-2 text-sm text-slate-600">
+                      <p className="mt-1 text-xs text-slate-600">
                         {stateLabel[ended ? "ended" : avatarState.human]}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="surface-panel rounded-2xl p-4 shadow-sm border border-slate-200">
                   <div className="flex items-center gap-4">
                     <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
                     <div>
                       <p className="text-sm font-semibold text-slate-900">AESTR Interviewer</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                         Evaluation channel
                       </p>
-                      <p className="mt-2 text-sm text-slate-600">
+                      <p className="mt-1 text-xs text-slate-600">
                         {stateLabel[ended ? "ended" : avatarState.ai]}
                       </p>
                     </div>
@@ -2688,31 +2634,13 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shrink-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Analysis state</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">
-                  {ended
-                    ? "Finalizing evaluation"
-                    : avatarState.ai === "thinking"
-                      ? "Analyzing response"
-                      : "Monitoring live answer"}
-                </p>
-                <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                  {ended
-                    ? "Your session has ended and the platform is packaging your final submission."
-                    : avatarState.ai === "thinking"
-                      ? "The interviewer is processing your latest response before continuing."
-                      : "Stay concise and speak clearly while the interviewer listens."}
-                </p>
-              </div>
-
-              <div className="surface-panel flex flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200 h-[360px]">
-                <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/50">
+              <div className="surface-panel flex flex-1 flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200 min-h-0">
+                <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50/50">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
-                    <p className="mt-0.5 text-sm font-medium text-slate-700">Live conversation log</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-700">Live conversation log</p>
                   </div>
-                  <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
+                  <div className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm">
                     {transcript.length} entries
                   </div>
                 </div>

@@ -195,6 +195,37 @@ function weightedAverage(values: Array<{ value: number; weight: number }>) {
   return usable.reduce((sum, item) => sum + item.value * item.weight, 0) / totalWeight;
 }
 
+function isTechnicalSummary(summary: string | null | undefined) {
+  const text = (summary ?? "").trim().toLowerCase();
+  if (!text) return false;
+  return (
+    text.includes("no transcript captured; cannot grade") ||
+    text.startsWith("grading error") ||
+    text.includes("internal grading prompt misconfigured")
+  );
+}
+
+function deriveDisplaySummary(
+  summary: string | null | undefined,
+  questionBreakdown: Array<{ status?: string | null; needs_review?: boolean | null; question_score?: number | null }>,
+) {
+  if (summary && !isTechnicalSummary(summary)) return summary;
+
+  const scoredCount = questionBreakdown.filter(
+    (item) => item.status === "scored" || item.status === "final" || item.question_score !== null,
+  ).length;
+  const reviewCount = questionBreakdown.filter((item) => Boolean(item.needs_review)).length;
+
+  if (scoredCount > 0) {
+    if (reviewCount > 0) {
+      return `Overall transcript capture was incomplete, so this summary is based on question-level evidence where available. ${scoredCount} question segment(s) were scored automatically and ${reviewCount} segment(s) still need review.`;
+    }
+    return `Overall transcript capture was incomplete, so this summary is based on question-level evidence where available. ${scoredCount} question segment(s) were scored automatically.`;
+  }
+
+  return "Automatic summary pending review because the interview transcript capture was incomplete.";
+}
+
 function deriveAcademicFromQuestionRows(rows: any[]) {
   const correctness = weightedAverage(
     rows
@@ -544,6 +575,7 @@ reportRouter.post("/report", async (req, res) => {
     const effectiveAcademic = fallbackAcademic ?? transcriptAcademic;
     const effectivePersonality = fallbackPersonality ?? transcriptPersonality;
     const roll = deriveRollupsNullable(effectiveAcademic, effectivePersonality);
+    const effectiveSummary = deriveDisplaySummary(summary, questionBreakdown);
     const strengthsArr = strengths?.slice(0, 10) ?? [];
     const improvementsArr = improvements?.slice(0, 10) ?? [];
     const statusCounts = questionBreakdown.reduce<Record<string, number>>((acc, item) => {
@@ -554,7 +586,7 @@ reportRouter.post("/report", async (req, res) => {
     const mergedReportJson = {
       academic: effectiveAcademic,
       personality: effectivePersonality,
-      summary: summary ?? null,
+      summary: effectiveSummary,
       strengths: strengthsArr,
       improvements: improvementsArr,
       question_scores: questionBreakdown,
@@ -622,7 +654,7 @@ reportRouter.post("/report", async (req, res) => {
         roll.band,
         roll.shortlist_status,
         roll.decision_reason,
-        summary ?? null,
+        effectiveSummary,
         strengthsArr.length ? strengthsArr : null,
         improvementsArr.length ? improvementsArr : null,
         transcript_full,
