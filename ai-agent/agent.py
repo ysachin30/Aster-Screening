@@ -70,6 +70,8 @@ CRITICAL RULES:
 16. If the student is silent or stuck, ask only one neutral prompt such as "What is your current thinking?" or "How would you approach it?" Then wait silently. Do not add any explanation.
 17. In question phase, after the question text, any extra sentence you speak must be an interrogative probe or a navigation instruction. If it is not a question, stay silent.
 18. Do not repeat the same follow-up twice in one question. If you have already asked once, wait for the student.
+19. On the FIRST turn of each new question, your entire response must be only the question text itself. Do not add any extra sentence before or after it.
+20. Do not ask any follow-up until the student has spoken in the current question.
 """
 
 def build_instructions(student_name: str, questions: list[dict]) -> str:
@@ -387,6 +389,23 @@ async def entrypoint(ctx: JobContext):
             return True
         return False
 
+    def _question_text_match_ratio(text: str, segment_key: str | None) -> float:
+        if not segment_key:
+            return 0.0
+        meta = segment_meta.get(segment_key) or {}
+        question_text = _normalize_prompt_text(str(meta.get("question_text") or ""))
+        spoken = _normalize_prompt_text(text)
+        if not question_text or not spoken:
+            return 0.0
+        if question_text in spoken or spoken in question_text:
+            return 1.0
+        question_tokens = [tok for tok in question_text.split() if len(tok) >= 4]
+        if not question_tokens:
+            return 0.0
+        spoken_set = set(spoken.split())
+        overlap = sum(1 for tok in question_tokens if tok in spoken_set)
+        return overlap / len(question_tokens)
+
     def _schedule_segment_finalize(segment_key: str | None, reason: str) -> None:
         if not segment_key:
             return
@@ -698,6 +717,9 @@ async def entrypoint(ctx: JobContext):
             seg_key = current_segment_key["value"]
             if seg_key:
                 segment_lines.setdefault(seg_key, []).append(line)
+                meta = segment_meta.get(seg_key)
+                if meta is not None:
+                    meta["student_turns"] = int(meta.get("student_turns") or 0) + 1
             logger.info("📝 Student: %s", text)
 
     @session.on("agent_speech_committed")
@@ -714,6 +736,42 @@ async def entrypoint(ctx: JobContext):
                     meta["agent_turns"] = int(meta.get("agent_turns") or 0) + 1
             logger.info("📝 AI: %s", text)
             meta = segment_meta.get(seg_key) if seg_key else None
+            if (
+                not interview_finished["value"]
+                and seg_key
+                and meta is not None
+                and int(meta.get("agent_turns") or 0) == 1
+                and _question_text_match_ratio(text, seg_key) < 0.7
+            ):
+                logger.warning("⚠️ First turn for %s did not read the question text. Forcing exact question read.", seg_key)
+                try:
+                    session.generate_reply(
+                        instructions=(
+                            "You did not read the question text. "
+                            "Your very next response must be exactly the QUESTION TEXT for the current screen and nothing else. "
+                            "Do not add any follow-up, instruction, or explanation before or after it."
+                        )
+                    )
+                except Exception as e:
+                    logger.warning("Could not inject question-text correction: %s", e)
+            if (
+                not interview_finished["value"]
+                and seg_key
+                and meta is not None
+                and int(meta.get("agent_turns") or 0) > 1
+                and int(meta.get("student_turns") or 0) == 0
+            ):
+                logger.warning("⚠️ Follow-up happened before student spoke for %s. Forcing silent wait.", seg_key)
+                try:
+                    session.generate_reply(
+                        instructions=(
+                            "Stop asking follow-ups before the student answers. "
+                            "Wait silently for the student's response. "
+                            "Do not ask another question until the student has spoken."
+                        )
+                    )
+                except Exception as e:
+                    logger.warning("Could not inject pre-answer wait notice: %s", e)
             if (
                 not interview_finished["value"]
                 and seg_key
@@ -817,12 +875,14 @@ async def entrypoint(ctx: JobContext):
                         "started_at": time.time(),
                         "finalized": False,
                         "agent_turns": 0,
+                        "student_turns": 0,
                     },
                 )
                 meta["question_text"] = qtext
                 meta["kind"] = kind
                 meta["part"] = int(part_num or 0)
                 meta["agent_turns"] = 0
+                meta["student_turns"] = 0
 
             if prev_segment_key and prev_segment_key != next_segment_key:
                 _schedule_segment_finalize(prev_segment_key, "question_changed")
@@ -865,9 +925,9 @@ async def entrypoint(ctx: JobContext):
                 f"HARD OVERRIDE: The UI is now showing {q_label} (code={code}, kind={kind}). "
                 "You must START SPEAKING IMMEDIATELY without asking for confirmation. "
                 "Speak only in English. "
-                "Start directly with the QUESTION TEXT BELOW VERBATIM exactly once. "
-                "Do not say any intro line, label, greeting, screen description, or framing sentence before the question text. "
-                "After the question text, ask for the student's answer. "
+                "Your entire next response must be exactly the QUESTION TEXT BELOW VERBATIM and nothing else. "
+                "Do not say any intro line, label, greeting, screen description, framing sentence, follow-up, or navigation instruction in that first response. "
+                "After that first response, wait for the student to speak before asking any follow-up. "
                 + interaction_line
                 + nav_line + " "
                 "Never reveal, confirm, paraphrase, or hint the answer or solution. "
