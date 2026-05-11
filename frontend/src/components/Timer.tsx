@@ -1,54 +1,73 @@
 "use client";
-import { useEffect, useState } from "react";
 
-const RADIUS = 20;
-const CIRC = 2 * Math.PI * RADIUS;
+import { useEffect, useMemo, useState } from "react";
 
 export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () => void }) {
-  const total = minutes * 60;
-  const [secs, setSecs] = useState(total);
+  const totalSeconds = minutes * 60;
+  const [secondsRemaining, setSecondsRemaining] = useState(totalSeconds);
 
   useEffect(() => {
-    if (secs <= 0) { onEnd(); return; }
-    const t = setTimeout(() => setSecs((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [secs, onEnd]);
+    if (secondsRemaining <= 0) {
+      onEnd();
+      return;
+    }
 
-  const m = Math.floor(secs / 60).toString().padStart(2, "0");
-  const s = (secs % 60).toString().padStart(2, "0");
-  const progress = secs / total;
-  const dash = CIRC * progress;
-  const isUrgent = secs <= 60;
-  const isCritical = secs <= 30;
+    const timer = window.setTimeout(() => {
+      setSecondsRemaining((value) => value - 1);
+    }, 1000);
 
-  const color = isCritical ? "#ef4444" : isUrgent ? "#f59e0b" : "#6366f1";
+    return () => window.clearTimeout(timer);
+  }, [secondsRemaining, onEnd]);
+
+  const minutesLabel = Math.floor(secondsRemaining / 60)
+    .toString()
+    .padStart(2, "0");
+  const secondsLabel = (secondsRemaining % 60).toString().padStart(2, "0");
+
+  const status = useMemo(() => {
+    if (secondsRemaining <= 30) {
+      return {
+        label: "Critical",
+        color: "#ef4444",
+        bg: "bg-red-50 text-red-700 border-red-200",
+        ring: "text-red-500",
+      };
+    }
+
+    if (secondsRemaining <= 90) {
+      return {
+        label: "Warning",
+        color: "#f59e0b",
+        bg: "bg-orange-50 text-orange-700 border-orange-200",
+        ring: "text-orange-500",
+      };
+    }
+
+    return {
+      label: "On track",
+      color: "#3b82f6",
+      bg: "bg-slate-50 text-slate-700 border-slate-200",
+      ring: "text-blue-500",
+    };
+  }, [secondsRemaining]);
+
+  const isCritical = secondsRemaining <= 30;
 
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="relative w-12 h-12 shrink-0">
-        <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-          <circle cx="24" cy="24" r={RADIUS} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3.5" />
-          <circle
-            cx="24" cy="24" r={RADIUS}
-            fill="none"
-            stroke={color}
-            strokeWidth="3.5"
-            strokeLinecap="round"
-            strokeDasharray={`${dash} ${CIRC}`}
-            style={{ transition: "stroke-dasharray 0.8s linear, stroke 0.5s ease", filter: `drop-shadow(0 0 4px ${color}80)` }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className={`text-[10px] font-bold font-mono leading-none ${isCritical ? "text-red-400" : isUrgent ? "text-amber-400" : "text-indigo-300"}`}>
-            {m}:{s}
+    <div
+      className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${status.bg} ${isCritical ? "animate-timer-pulse" : ""}`}
+      aria-live="polite"
+    >
+      <div className="flex flex-col">
+        <div className="flex items-baseline gap-2">
+          <span className="text-xl font-bold tabular-nums">
+            {minutesLabel}:{secondsLabel}
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider opacity-80">
+            {status.label}
           </span>
         </div>
       </div>
-      {isUrgent && (
-        <span className={`text-xs font-medium ${isCritical ? "text-red-400 animate-pulse" : "text-amber-400"}`}>
-          {isCritical ? "Wrapping up!" : "1 min left"}
-        </span>
-      )}
     </div>
   );
 }

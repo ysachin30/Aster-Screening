@@ -5,8 +5,8 @@ import { Inter } from "next/font/google";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "GyanVihar AI Interview",
-  description: "10-minute AI cognitive screening",
+  title: "AESTR Admission Screening",
+  description: "Premium AI-assisted university admission assessment experience",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -45,10 +45,10 @@ export default function ResultsPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full border-2 border-indigo-400/40 border-t-indigo-400 animate-spin" />
-            <p className="text-white/50 text-sm">Loading your results…</p>
+        <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white px-8 py-9 text-center shadow-sm">
+            <div className="h-12 w-12 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
+            <p className="text-sm font-medium text-slate-600">Loading your AESTR results...</p>
           </div>
         </main>
       }
@@ -60,17 +60,17 @@ export default function ResultsPage() {
 
 function shortlistLabel(status: string | null): { label: string; className: string } {
   if (!status) {
-    return { label: "Pending review", className: "bg-white/10 border-white/20 text-white/70" };
+    return { label: "Pending review", className: "border-slate-200 bg-slate-50 text-slate-600" };
   }
   switch (status) {
     case "shortlist":
-      return { label: "Shortlist", className: "bg-emerald-500/15 border-emerald-400/30 text-emerald-300" };
+      return { label: "Shortlist", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
     case "borderline":
-      return { label: "Borderline", className: "bg-amber-500/15 border-amber-400/30 text-amber-200" };
+      return { label: "Borderline", className: "border-orange-200 bg-orange-50 text-orange-700" };
     case "reject":
-      return { label: "Not shortlisted", className: "bg-red-500/15 border-red-400/30 text-red-300" };
+      return { label: "Not shortlisted", className: "border-red-200 bg-red-50 text-red-700" };
     default:
-      return { label: status, className: "bg-white/10 border-white/20 text-white/70" };
+      return { label: status, className: "border-slate-200 bg-slate-50 text-slate-600" };
   }
 }
 
@@ -106,10 +106,10 @@ function ResultsPageContent() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-indigo-400/40 border-t-indigo-400 animate-spin" />
-          <p className="text-white/50 text-sm">Loading your results…</p>
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white px-8 py-9 text-center shadow-sm">
+          <div className="h-12 w-12 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
+          <p className="text-sm font-medium text-slate-600">Loading your AESTR results...</p>
         </div>
       </main>
     );
@@ -117,9 +117,11 @@ function ResultsPageContent() {
 
   if (!studentId || error || !report) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="glass rounded-3xl p-10 max-w-md text-center">
-          <p className="text-white/60">{error || (!studentId ? "Missing student id" : "No report found")}</p>
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-base font-medium text-slate-700">
+            {error || (!studentId ? "Missing student id" : "No report found")}
+          </p>
         </div>
       </main>
     );
@@ -131,14 +133,14 @@ function ResultsPageContent() {
   const reviewPending = overallPct === null;
 
   const academicDims = [
-    { label: "Correctness", value: num(report.academic_correctness), color: "#38bdf8" },
-    { label: "Understanding", value: num(report.academic_understanding), color: "#818cf8" },
-    { label: "Reasoning depth", value: num(report.academic_reasoning), color: "#c084fc" },
+    { label: "Correctness", value: num(report.academic_correctness), color: "#3b82f6" },
+    { label: "Understanding", value: num(report.academic_understanding), color: "#6366f1" },
+    { label: "Reasoning depth", value: num(report.academic_reasoning), color: "#8b5cf6" },
   ];
 
   const personalityDims = [
     { label: "Confidence", value: num(report.conf_score), color: "#6366f1" },
-    { label: "Communication", value: num(report.communication_score), color: "#22d3ee" },
+    { label: "Communication", value: num(report.communication_score), color: "#06b6d4" },
     { label: "Curiosity", value: num(report.curiosity_score), color: "#f59e0b" },
     { label: "Exploratory thinking", value: num(report.exploratory_score), color: "#10b981" },
     { label: "Comprehension", value: num(report.comprehension_score), color: "#ec4899" },
@@ -148,40 +150,39 @@ function ResultsPageContent() {
   const improvements = Array.isArray(report.improvements) ? report.improvements : [];
 
   return (
-    <main className="min-h-screen p-6 relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-indigo-600/10 blur-[120px]" />
-        <div className="absolute -bottom-40 -right-20 w-[500px] h-[500px] rounded-full bg-emerald-500/8 blur-[100px]" />
-      </div>
-
-      <div className="relative max-w-4xl mx-auto animate-fade-up">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-400/20 text-emerald-400 text-sm mb-4">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Interview Complete
+    <main className="min-h-screen bg-slate-50 px-6 py-12 lg:px-8">
+      <div className="mx-auto max-w-6xl animate-fade-up">
+        <div className="mb-10 text-center">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-slate-600 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Assessment complete
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">Your Assessment Results</h1>
-          <p className="text-white/40">Academic and personality profile</p>
-          <div className="flex flex-wrap justify-center gap-3 mt-4">
-            <span className="px-4 py-1.5 rounded-full text-sm font-medium border bg-indigo-500/15 border-indigo-400/30 text-indigo-200">
+          <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-slate-500">AESTR evaluation report</p>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
+            Your assessment results
+          </h1>
+          <p className="mt-3 text-base text-slate-600">Academic performance and communication profile</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-sm font-bold text-blue-700">
               Band {report.band || "—"}
             </span>
-            <span className={`px-4 py-1.5 rounded-full text-sm font-medium border ${sl.className}`}>{sl.label}</span>
+            <span className={`rounded-full border px-4 py-1.5 text-sm font-bold ${sl.className}`}>{sl.label}</span>
             {report.manual_override_status ? (
-              <span className="px-4 py-1.5 rounded-full text-xs border border-white/15 text-white/50">
+              <span className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
                 Reviewer override
               </span>
             ) : null}
           </div>
           {report.decision_reason ? (
-            <p className="text-white/35 text-xs mt-3 max-w-xl mx-auto">{report.decision_reason}</p>
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-600">{report.decision_reason}</p>
           ) : null}
         </div>
 
-        <div className="glass rounded-3xl p-8 mb-6 text-center">
-          <div className="relative inline-flex items-center justify-center w-32 h-32 mb-4">
+        <div className="mb-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <div className="relative mb-4 inline-flex h-32 w-32 items-center justify-center">
             <svg className="w-full h-full transform -rotate-90">
-              <circle cx="64" cy="64" r="56" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
+              <circle cx="64" cy="64" r="56" stroke="#f1f5f9" strokeWidth="8" fill="none" />
               <circle
                 cx="64"
                 cy="64"
@@ -196,29 +197,40 @@ function ResultsPageContent() {
               />
               <defs>
                 <linearGradient id="gradientOverall" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#6366f1" />
+                  <stop offset="0%" stopColor="#3b82f6" />
                   <stop offset="100%" stopColor="#10b981" />
                 </linearGradient>
               </defs>
             </svg>
-            <span className="absolute text-3xl font-bold text-white">{overallPct === null ? "—" : `${Math.round(overallPct)}%`}</span>
+              <span className="absolute text-3xl font-bold text-slate-900">
+                {overallPct === null ? "—" : `${Math.round(overallPct)}%`}
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-slate-700">
+              {reviewPending ? "Automatic scoring pending review" : "Overall score"}
+            </p>
+            <p className="mt-2 text-xs font-medium text-slate-500">
+              Academic {formatNum(num(report.academic_score))} · Personality {formatNum(num(report.personality_score))}
+            </p>
           </div>
-          <p className="text-white/60 text-sm">{reviewPending ? "Automatic scoring pending review" : "Overall score (academic + personality)"}</p>
-          <p className="text-white/35 text-xs mt-2">
-            Academic {formatNum(num(report.academic_score))} · Personality {formatNum(num(report.personality_score))}
-          </p>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">AI summary</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">Evaluation overview</h2>
+            <p className="mt-4 text-base leading-relaxed text-slate-700">{report.summary || "—"}</p>
+          </div>
         </div>
 
-        <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">Academic (0–10 each)</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">Academic profile</h2>
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
           {academicDims.map((dim) => (
-            <div key={dim.label} className="glass rounded-2xl p-6 text-center">
-              <p className="text-white/40 text-xs uppercase tracking-wide mb-2">{dim.label}</p>
-              <p className="text-4xl font-bold text-white mb-2">{formatNum(dim.value)}</p>
-              {dim.value === null ? <p className="text-[11px] text-white/35 mb-2">Pending review</p> : null}
-              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+            <div key={dim.label} className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">{dim.label}</p>
+              <p className="mb-2 text-4xl font-bold text-slate-900">{formatNum(dim.value)}</p>
+              {dim.value === null ? <p className="mb-2 text-[10px] font-medium text-slate-400">Pending review</p> : null}
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full transition-all duration-1000"
+                  className="h-full rounded-full transition-all duration-1000 ease-out"
                   style={{ width: `${(dim.value ?? 0) * 10}%`, backgroundColor: dim.color }}
                 />
               </div>
@@ -226,34 +238,29 @@ function ResultsPageContent() {
           ))}
         </div>
 
-        <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">Personality & communication</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">Communication profile</h2>
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {personalityDims.map((dim) => (
-            <div key={dim.label} className="glass rounded-2xl p-6 text-center">
-              <p className="text-white/40 text-xs uppercase tracking-wide mb-2">{dim.label}</p>
-              <p className="text-3xl font-bold text-white mb-2">{formatNum(dim.value)}</p>
-              {dim.value === null ? <p className="text-[11px] text-white/35 mb-2">Pending review</p> : null}
-              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+            <div key={dim.label} className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">{dim.label}</p>
+              <p className="mb-2 text-3xl font-bold text-slate-900">{formatNum(dim.value)}</p>
+              {dim.value === null ? <p className="mb-2 text-[10px] font-medium text-slate-400">Pending review</p> : null}
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full transition-all duration-1000"
+                  className="h-full rounded-full transition-all duration-1000 ease-out"
                   style={{ width: `${(dim.value ?? 0) * 10}%`, backgroundColor: dim.color }}
                 />
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="glass rounded-3xl p-8 mb-6">
-          <h3 className="text-lg font-semibold text-white mb-4">AI summary</h3>
-          <p className="text-white/70 leading-relaxed">{report.summary || "—"}</p>
         </div>
 
         {(strengths.length > 0 || improvements.length > 0) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
             {strengths.length > 0 ? (
-              <div className="glass rounded-3xl p-6">
-                <h3 className="text-sm font-semibold text-emerald-400/90 mb-3">Strengths</h3>
-                <ul className="list-disc list-inside text-white/65 text-sm space-y-1">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                <h3 className="mb-3 text-sm font-bold text-emerald-800">Strengths</h3>
+                <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed text-emerald-700">
                   {strengths.map((s, i) => (
                     <li key={i}>{s}</li>
                   ))}
@@ -261,9 +268,9 @@ function ResultsPageContent() {
               </div>
             ) : null}
             {improvements.length > 0 ? (
-              <div className="glass rounded-3xl p-6">
-                <h3 className="text-sm font-semibold text-amber-400/90 mb-3">Areas to improve</h3>
-                <ul className="list-disc list-inside text-white/65 text-sm space-y-1">
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-6">
+                <h3 className="mb-3 text-sm font-bold text-orange-800">Areas to improve</h3>
+                <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed text-orange-700">
                   {improvements.map((s, i) => (
                     <li key={i}>{s}</li>
                   ))}
@@ -273,27 +280,27 @@ function ResultsPageContent() {
           </div>
         )}
 
-        <div className="glass rounded-3xl p-8">
-          <h3 className="text-lg font-semibold text-white mb-4">Full transcript</h3>
-          <div className="bg-black/30 rounded-xl p-4 max-h-96 overflow-y-auto">
-            <pre className="text-white/50 text-sm whitespace-pre-wrap font-mono">{report.transcript_full}</pre>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h3 className="mb-4 text-lg font-bold text-slate-900">Full transcript</h3>
+          <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-700">{report.transcript_full}</pre>
           </div>
         </div>
 
-        <div className="flex justify-center gap-4 mt-8">
+        <div className="mt-10 flex flex-wrap justify-center gap-4">
           <button
             type="button"
             onClick={() => window.print()}
-            className="px-6 py-3 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 font-medium text-sm hover:bg-indigo-500/30 transition-colors"
+            className="btn-primary flex items-center justify-center rounded-lg px-6 py-3 text-sm font-semibold transition-colors"
           >
-            Print Results
+            Print results
           </button>
           <button
             type="button"
             onClick={() => (window.location.href = "/")}
-            className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 font-medium text-sm hover:bg-white/10 transition-colors"
+            className="btn-secondary flex items-center justify-center rounded-lg px-6 py-3 text-sm font-semibold transition-colors"
           >
-            Back to Home
+            Back to home
           </button>
         </div>
       </div>

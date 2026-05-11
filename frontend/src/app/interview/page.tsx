@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   LiveKitRoom,
@@ -9,7 +10,8 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { ConnectionState, Track, LocalVideoTrack } from "livekit-client";
-import Timer from "@/components/Timer";
+import Timer from "../../components/Timer";
+import { getStoredAssessmentSequence } from "@/lib/assessment";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
@@ -183,6 +185,36 @@ const QUESTIONS: Question[] = [
   },
 ];
 
+const questionDiscipline = (question: Question) => {
+  if (question.kind === "differentiability") return "Mathematics";
+  if (question.id === 5) return "Logic";
+  return "Physics";
+};
+
+const questionSequenceLabel = (question: Question, part: number) => {
+  if (question.id !== 2) return `Question ${question.id}`;
+  return `Question 2.${part}`;
+};
+
+async function enterFullscreenFocus() {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
+
+  if (document.fullscreenElement) return;
+
+  try {
+    if (root.requestFullscreen) {
+      await root.requestFullscreen();
+    } else if (root.webkitRequestFullscreen) {
+      await root.webkitRequestFullscreen();
+    }
+  } catch {
+    // Browser can reject fullscreen; the focus layout still works without it.
+  }
+}
+
 export default function InterviewPage() {
   return (
     <Suspense fallback={<LoadingScreen />}>
@@ -193,14 +225,13 @@ export default function InterviewPage() {
 
 function LoadingScreen() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#060810]">
-      <div className="flex flex-col items-center gap-5">
-        <div className="relative w-16 h-16">
-          <div className="absolute inset-0 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="absolute inset-3 rounded-full border border-indigo-400/10 border-t-indigo-400/40 animate-spin" style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
-          <div className="absolute inset-0 flex items-center justify-center text-lg">✨</div>
+    <main className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="rounded-2xl border border-slate-200 bg-white px-8 py-9 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-xl bg-slate-50">
+          <div className="h-8 w-8 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
         </div>
-        <p className="text-white/30 text-xs tracking-widest uppercase">Preparing Room</p>
+        <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-slate-500">Preparing room</p>
+        <p className="mt-2 text-sm text-slate-600">Establishing your AESTR assessment session</p>
       </div>
     </main>
   );
@@ -211,8 +242,8 @@ function InterviewPageContent() {
   const room = params.get("room") || "";
   const name = params.get("name") || "Student";
   const sid = params.get("sid") || "";
+  const seqParam = Number(params.get("seq") || 0);
   const [token, setToken] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
   const [isIntroductionPhase, setIsIntroductionPhase] = useState(true);
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set());
   const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
@@ -255,10 +286,13 @@ function InterviewPageContent() {
 
   if (!token) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 animate-fade-up">
-          <div className="w-12 h-12 rounded-full border-2 border-indigo-400/40 border-t-indigo-400 animate-spin" />
-          <p className="text-white/50 text-sm tracking-wide">Preparing your interview room…</p>
+      <main className="flex min-h-screen items-center justify-center px-6 bg-slate-50">
+        <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white px-8 py-9 text-center shadow-sm">
+          <div className="h-12 w-12 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Connecting</p>
+            <p className="mt-2 text-sm text-slate-600">Preparing your interview environment...</p>
+          </div>
         </div>
       </main>
     );
@@ -278,12 +312,11 @@ function InterviewPageContent() {
       <AudioUnlockGate>
         <InterviewStage 
           name={name} 
+          candidateSequence={Number.isFinite(seqParam) && seqParam > 0 ? seqParam : undefined}
           isIntroductionPhase={isIntroductionPhase}
           setIsIntroductionPhase={setIsIntroductionPhase}
           question={QUESTIONS[activeQuestionIdx]}
           frozen={false}
-          onCanvasReady={() => {}}
-          answeredQuestions={answeredQuestions}
           setActiveQuestionIdx={setActiveQuestionIdx}
           setAnsweredQuestions={setAnsweredQuestions}
           activeQuestionIdx={activeQuestionIdx}
@@ -313,27 +346,35 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
 
   if (!unlocked) {
     return (
-      <div className="min-h-screen bg-[#060810] text-white font-sans antialiased overflow-hidden flex items-center justify-center">
-        <div className="text-center space-y-8 max-w-md mx-auto px-8">
-          <div className="relative w-32 h-32 mx-auto">
-            <div className="absolute inset-0 rounded-full bg-indigo-500/10 animate-ping" style={{ animationDuration: "2.6s", animationDelay: "0.4s" }} />
-            <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500/40 to-purple-600/40 border border-indigo-400/50 flex items-center justify-center shadow-xl shadow-indigo-500/30">
-              <svg className="w-14 h-14 text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+        >
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-6">
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
               </svg>
             </div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Access required</p>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+              Enable your microphone
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600 max-w-md mx-auto">
+              AESTR uses live audio monitoring throughout the interview. Once enabled, the
+              platform will transition into a distraction-free fullscreen experience.
+            </p>
+
+            <button
+              onClick={unlock}
+              className="btn-primary mt-8 inline-flex items-center justify-center rounded-lg px-6 py-3 text-sm font-semibold transition-colors w-full sm:w-auto"
+            >
+              Allow Microphone Access
+            </button>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-3">Ready to begin?</h2>
-          <p className="text-sm text-white/40 mb-8 leading-relaxed">
-            Enable your microphone to start your AI-powered interview. The interviewer will greet you immediately.
-          </p>
-          <button
-            onClick={unlock}
-            className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl"
-          >
-            Enable Microphone
-          </button>
-        </div>
+        </motion.div>
       </div>
     );
   }
@@ -342,10 +383,10 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
     <>
       {micOk === false && (
         <div
-          className="fixed z-40 px-4 py-2.5 rounded-2xl bg-red-500/20 border border-red-400/30 text-red-300 text-[11px] backdrop-blur-xl shadow-lg max-w-[min(calc(100vw-1.5rem),22rem)] text-center left-1/2 -translate-x-1/2 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:bottom-auto lg:top-4"
+          className="fixed left-1/2 z-40 max-w-[min(calc(100vw-1.5rem),24rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-600 shadow-sm bottom-[max(1rem,env(safe-area-inset-bottom))] lg:bottom-auto lg:top-4"
           role="status"
         >
-          ⚠️ Microphone blocked — check browser permissions
+          Microphone access is blocked. Update browser permissions to continue.
         </div>
       )}
       {children}
@@ -353,6 +394,7 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function VideoConference({ name, isIntroductionPhase, setIsIntroductionPhase }: { 
   name: string; 
   isIntroductionPhase: boolean;
@@ -361,6 +403,7 @@ function VideoConference({ name, isIntroductionPhase, setIsIntroductionPhase }: 
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function AIAvatar({ state }: { state: AvatarState }) {
   // SPEAKING — neon magenta MORPHING BLOB with sound waves
   if (state === "speaking") {
@@ -437,6 +480,7 @@ function AIAvatar({ state }: { state: AvatarState }) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function HumanAvatar({ state }: { state: AvatarState }) {
   // SPEAKING — neon cyan MORPHING BLOB with sound waves
   if (state === "speaking") {
@@ -492,6 +536,7 @@ function HumanAvatar({ state }: { state: AvatarState }) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TranscriptView({ entries }: { entries: TranscriptEntry[] }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -528,6 +573,184 @@ function TranscriptView({ entries }: { entries: TranscriptEntry[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function SignalBadge({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "live" | "warning";
+}) {
+  const toneClass = tone === "live"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : tone === "warning"
+      ? "border-orange-200 bg-orange-50 text-orange-700"
+      : "border-slate-200 bg-white text-slate-700";
+
+  return (
+    <div className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${toneClass}`}>
+      <span className="mr-2 uppercase tracking-widest text-slate-500">{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function AssessmentTranscriptView({ entries }: { entries: TranscriptEntry[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [entries]);
+
+  if (entries.length === 0) {
+    return (
+      <div className="flex min-h-[16rem] flex-1 items-center justify-center px-6 py-8 text-center">
+        <div className="max-w-xs">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3h6m-9 7.5h12A2.25 2.25 0 0 0 18.75 16.5v-9A2.25 2.25 0 0 0 16.5 5.25h-9A2.25 2.25 0 0 0 5.25 7.5v9A2.25 2.25 0 0 0 7.5 18.75Z" />
+            </svg>
+          </div>
+          <p className="mt-4 text-sm font-medium text-slate-700">Live transcript will appear here</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            The assessment feed updates as the interviewer speaks and your responses are detected.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      {entries.map((entry) => (
+        <motion.div
+          key={entry.id}
+          layout
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`flex ${entry.who === "user" ? "justify-end" : "justify-start"}`}
+        >
+          <div
+            className={`max-w-[88%] rounded-2xl border px-4 py-3 text-sm leading-6 ${
+              entry.who === "user"
+                ? "border-blue-200 bg-blue-50 text-slate-800"
+                : "border-slate-200 bg-white text-slate-800"
+            }`}
+          >
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <span
+                className={`h-2 w-2 rounded-full ${entry.who === "user" ? "bg-blue-500" : "bg-emerald-500"}`}
+              />
+              {entry.who === "user" ? "Candidate" : "AESTR AI"}
+            </div>
+            {entry.text}
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+function AssessmentAvatar({
+  state,
+  tone,
+  label,
+}: {
+  state: AvatarState;
+  tone: "ai" | "human";
+  label: string;
+}) {
+  const palette = tone === "ai"
+    ? {
+        ring: "border-emerald-200",
+        glow: "shadow-[0_0_40px_rgba(16,185,129,0.1)]",
+        inner: "bg-white",
+        accent: "bg-emerald-500",
+        text: "text-emerald-700",
+      }
+    : {
+        ring: "border-blue-200",
+        glow: "shadow-[0_0_40px_rgba(59,130,246,0.1)]",
+        inner: "bg-white",
+        accent: "bg-blue-500",
+        text: "text-blue-700",
+      };
+
+  const bars = state === "speaking";
+  const thinking = state === "thinking";
+  const ended = state === "ended";
+
+  return (
+    <div className="relative flex h-28 w-28 items-center justify-center sm:h-32 sm:w-32">
+      <div className={`absolute inset-0 rounded-full border ${palette.ring} ${palette.glow}`} />
+      <div className="absolute inset-[10px] rounded-full border border-slate-100" />
+      <div
+        className={`absolute inset-[18px] rounded-full border border-slate-200 ${thinking ? "animate-spin-slow" : "animate-glow-breathe"}`}
+        style={thinking ? { animationDuration: "5s" } : undefined}
+      />
+      <div
+        className={`relative flex h-[72px] w-[72px] items-center justify-center rounded-full border border-slate-200 shadow-sm ${palette.inner} sm:h-[84px] sm:w-[84px]`}
+      >
+        {ended ? (
+          <svg className={`h-7 w-7 ${palette.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
+          </svg>
+        ) : bars ? (
+          <div className="flex items-end gap-1">
+            {[18, 28, 22, 30].map((height, index) => (
+              <span
+                key={`${label}-${height}`}
+                className={`block w-1.5 rounded-full ${palette.accent} animate-wave ${index % 2 === 0 ? "opacity-80" : ""}`}
+                style={{ height, animationDelay: `${index * 0.1}s` }}
+              />
+            ))}
+          </div>
+        ) : thinking ? (
+          <div className="relative flex h-8 w-8 items-center justify-center">
+            <span className={`absolute h-2 w-2 rounded-full ${palette.accent}`} />
+            <span className={`absolute h-8 w-8 rounded-full border border-slate-300 animate-spin-slow`} />
+          </div>
+        ) : (
+          <span className={`text-lg font-semibold tracking-widest ${palette.text}`}>{label}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FocusCountdownOverlay({ value }: { value: number | null }) {
+  return (
+    <AnimatePresence>
+      {value !== null && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-md"
+        >
+          <div className="text-center">
+            <motion.p
+              key={value}
+              initial={{ opacity: 0, scale: 0.84, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.08, y: -6 }}
+              transition={{ duration: 0.42, ease: "easeOut" }}
+              className="text-[6rem] font-bold tracking-tight text-slate-900 sm:text-[8rem]"
+            >
+              {value}
+            </motion.p>
+            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
+              Entering focus mode
+            </p>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -586,9 +809,6 @@ function QuestionPanel({
   frozen,
   segmentId,
   onCanvasReady,
-  answeredQuestions,
-  setActiveQuestionIdx,
-  setAnsweredQuestions,
   q2Part,
   setQ2Part,
   onActivitySnapshot,
@@ -597,9 +817,6 @@ function QuestionPanel({
   frozen: boolean;
   segmentId: string;
   onCanvasReady: (canvas: HTMLCanvasElement) => void;
-  answeredQuestions: Set<number>;
-  setActiveQuestionIdx: (index: number) => void;
-  setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
   q2Part?: number;
   setQ2Part?: React.Dispatch<React.SetStateAction<number>>;
   onActivitySnapshot?: (snapshot: QuestionInteractionSnapshot) => void;
@@ -1248,6 +1465,13 @@ function QuestionPanel({
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
   const hidePresetVectors = isQ2;
   const canAdvanceQ2Part = part === 1 ? true : strokes.length > 0;
+  const responseGuidance = isSatelliteInteractive
+    ? drawMode
+      ? "Draw directly on the frame to explain your reasoning before advancing."
+      : "Drag the model to inspect the scenario, then switch to drawing when you are ready."
+    : isDiff
+      ? "Drag the point across the curve and describe what happens near the corner."
+      : "Speak clearly and structure your answer before continuing.";
 
   useEffect(() => {
     onActivitySnapshot?.({
@@ -1268,159 +1492,204 @@ function QuestionPanel({
   }, [segmentId, question.id, question.kind, part, strokes, drawMode, showContext, satAngle, diffX, isSatellite, isDiff, onActivitySnapshot]);
 
   return (
-    <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
-      {/* Question card */}
-      <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 border border-fuchsia-400/25 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/8 to-cyan-500/8 shrink-0 backdrop-blur-md">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded-md bg-fuchsia-500/20 border border-fuchsia-400/30 text-[9px] font-bold text-fuchsia-300 tracking-widest">
-                Q{question.id}
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: "easeOut" }}
+      className="flex flex-1 flex-col gap-5 overflow-hidden"
+    >
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 shrink-0">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
+                {questionSequenceLabel(question, part)}
               </span>
-              <span className="text-[9px] text-white/30">
-                {question.kind === "differentiability"
-                  ? "Mathematics"
-                  : question.id === 5
-                    ? "Logic puzzle"
-                    : "Physics"}
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-600">
+                {questionDiscipline(question)}
               </span>
+              {isQ2 && (
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-600">
+                  Part {part} of 3
+                </span>
+              )}
             </div>
-            <h3 className="text-[13px] sm:text-sm font-bold text-white leading-snug whitespace-pre-line break-words">{displayedQuestion}</h3>
+
+            <h2 className="mt-4 max-w-4xl text-xl font-bold leading-tight text-slate-900 sm:text-2xl">
+              {displayedQuestion}
+            </h2>
           </div>
+
           <button
             onClick={() => setShowContext(!showContext)}
-            className="shrink-0 px-2 py-0.5 rounded-lg text-[9px] font-medium bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/60 hover:text-white transition-all"
+            className="btn-secondary inline-flex shrink-0 items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
           >
-            {showContext ? "Hide" : "Context"}
+            {showContext ? "Hide context" : "View context"}
           </button>
         </div>
-        {showContext && (
-          <div className="mt-2 pt-2 border-t border-white/8 max-h-24 overflow-y-auto animate-fade-up">
-            <p className="text-[11px] text-white/55 leading-relaxed whitespace-pre-line">{question.context}</p>
-          </div>
-        )}
+
+        <AnimatePresence initial={false}>
+          {showContext && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-line">{question.context}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Canvas / media area — guaranteed visible region on small screens (nothing may overlay this column) */}
-      <div className="relative flex-1 rounded-2xl overflow-hidden border border-white/8 bg-black min-h-0 max-lg:min-h-[min(42svh,340px)] max-lg:flex-shrink-0">
-        {/* Persistent canvas — streams to AI. Visible for satellite, hidden for gif */}
-        <canvas
-          ref={canvasRef}
-          width={1280}
-          height={720}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          className={
-            isSatelliteInteractive
-              ? `w-full h-full touch-none ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
-              : isDiff
-                ? "w-full h-full touch-none cursor-grab active:cursor-grabbing"
-                : "hidden"
-          }
-        />
+      <div className="grid flex-1 gap-5 xl:grid-cols-[1fr_1.5fr] xl:min-h-0">
+        <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Response guidance</p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-700">{responseGuidance}</p>
 
-        {/* Floating Erase button when satellite + has a stroke */}
-        {isSatelliteInteractive && strokes.length > 0 && (
-          <button
-            onClick={clearStroke}
-            disabled={frozen}
-            className="absolute top-3 right-3 px-3 py-1.5 rounded-xl text-[10px] font-bold bg-black/60 hover:bg-black/80 border border-white/20 hover:border-white/40 text-white/80 backdrop-blur-md shadow-lg transition-all disabled:opacity-40"
-          >
-            🧹 Erase
-          </button>
-        )}
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Input mode</p>
+              <p className="mt-1.5 text-sm font-bold text-slate-900">
+                {isInteractive ? "Interactive response" : "Voice response"}
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                {isInteractive
+                  ? "Manipulate the visual frame while explaining your reasoning aloud."
+                  : "Think aloud clearly so the interviewer can assess your reasoning process."}
+              </p>
+            </div>
 
-        {/* Non-interactive visuals */}
-        {!isInteractive && (
-          <>
-            {question.kind === "gif" ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={GIF_URL} alt="visual cue" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-              </>
-            ) : isQ2TheoryPart ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={Q2_THEORY_GIF_URL} alt="Q2 part 1 theory visual" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-              </>
-            ) : isQ4BridgeGif ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-              </>
-            ) : isQ5LogicGif ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-              </>
-            ) : (
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-purple-950/30 to-slate-950">
-                <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(236,72,153,0.25), transparent 40%), radial-gradient(circle at 80% 30%, rgba(34,211,238,0.18), transparent 45%), radial-gradient(circle at 50% 80%, rgba(139,92,246,0.18), transparent 50%)" }} />
-                <div className="absolute inset-0 flex items-center justify-center p-10">
-                  <div className="max-w-xl w-full rounded-3xl border border-white/10 bg-white/5 backdrop-blur-md p-8">
-                    <div className="text-xs tracking-widest text-white/40 font-semibold">VISUAL THINKING</div>
-                    <div className="mt-2 text-white/80 text-sm leading-relaxed">
-                      Use the question text above. When you are ready, click <span className="font-semibold text-fuchsia-200">Submit & Next</span>.
-                    </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Assessment note</p>
+              <p className="mt-1.5 text-sm font-bold text-slate-900">The interviewer sees this panel live</p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                Keep your explanation structured and use the visual region when it supports your answer.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-h-[22rem] flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 xl:min-h-0">
+          <div className="mb-3 flex items-center justify-between px-1 sm:px-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Media frame</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {isInteractive ? "Use the workspace to support your response." : "Review the prompt visual before answering."}
+              </p>
+            </div>
+
+            {isSatelliteInteractive && strokes.length > 0 && (
+              <button
+                onClick={clearStroke}
+                disabled={frozen}
+                className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+              >
+                Clear drawing
+              </button>
+            )}
+          </div>
+
+          <div className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-[#000510] min-h-[22rem] xl:min-h-0">
+            <canvas
+              ref={canvasRef}
+              width={1280}
+              height={720}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              className={
+                isSatelliteInteractive
+                  ? `absolute inset-0 z-[2] h-full w-full touch-none rounded-[1rem] ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
+                  : isDiff
+                    ? "absolute inset-0 z-[2] h-full w-full touch-none rounded-[1rem] cursor-grab active:cursor-grabbing"
+                    : "hidden"
+              }
+            />
+
+            {!isInteractive && (
+              <div className="absolute inset-0 z-[2] flex items-center justify-center rounded-[1rem] bg-white p-4">
+                {question.kind === "gif" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain" />
+                ) : isQ2TheoryPart ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={Q2_THEORY_GIF_URL} alt="Satellite theory visual" className="h-full w-full object-contain" />
+                ) : isQ4BridgeGif ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="h-full w-full object-contain" />
+                ) : isQ5LogicGif ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="max-w-xl rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Visual prompt</p>
+                    <p className="mt-3 text-sm leading-relaxed text-slate-700">
+                      Use the question text and respond aloud when you are ready to proceed.
+                    </p>
                   </div>
-                </div>
+                )}
               </div>
             )}
-          </>
-        )}
-
+          </div>
+        </div>
       </div>
 
-      {/* Action buttons */}
-      {isSatelliteInteractive && (
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={toggleDrawMode}
-            disabled={frozen}
-            className={`w-full py-2 rounded-xl text-[11px] font-semibold border transition-all disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] ${
-              drawMode
-                ? "bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/60 text-cyan-100 shadow-sm shadow-cyan-500/40"
-                : "bg-white/5 hover:bg-white/10 border-white/20 text-white/70"
-            }`}
-          >
-            {drawMode ? "✏️ Drawing mode — tap to drag" : "✏️ Draw trajectory"}
-          </button>
-        </div>
-      )}
+      <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Answer area</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+              Speak clearly, keep your reasoning structured, and use the controls below when the task requires interaction.
+            </p>
+          </div>
 
-      {/* Q2 part navigation */}
-      {isSatellite && isQ2 && typeof setQ2Part === "function" && part < 3 && (
-        <button
-          onClick={() => {
-            clearStroke();
-            setShowContext(false);
-            setDrawMode(false);
-            setQ2Part(p => Math.min(3, p + 1));
-          }}
-          disabled={frozen || !canAdvanceQ2Part}
-          className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {canAdvanceQ2Part ? "Next Part" : "Draw answer to unlock Next Part"}
-        </button>
-      )}
-    </div>
+          <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[16rem]">
+            {isSatelliteInteractive && (
+              <button
+                onClick={toggleDrawMode}
+                disabled={frozen}
+                className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
+                  drawMode
+                    ? "bg-blue-50 border border-blue-200 text-blue-700"
+                    : "btn-secondary"
+                }`}
+              >
+                {drawMode ? "Switch to drag mode" : "Enable drawing mode"}
+              </button>
+            )}
+
+            {isSatellite && isQ2 && typeof setQ2Part === "function" && part < 3 && (
+              <button
+                onClick={() => {
+                  clearStroke();
+                  setShowContext(false);
+                  setDrawMode(false);
+                  setQ2Part((p) => Math.min(3, p + 1));
+                }}
+                disabled={frozen || !canAdvanceQ2Part}
+                className="btn-primary rounded-lg px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {canAdvanceQ2Part ? "Continue to next part" : "Complete the drawing to continue"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
-function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, question, frozen, onCanvasReady, answeredQuestions, setActiveQuestionIdx, setAnsweredQuestions, activeQuestionIdx, isFinished, setIsFinished }: { 
+function InterviewStage({ name, candidateSequence: initialCandidateSequence, isIntroductionPhase, setIsIntroductionPhase, question, frozen, setActiveQuestionIdx, setAnsweredQuestions, activeQuestionIdx, isFinished, setIsFinished }: { 
   name: string; 
+  candidateSequence?: number;
   isIntroductionPhase: boolean;
   setIsIntroductionPhase: (value: boolean) => void;
   question: Question;
   frozen: boolean;
-  onCanvasReady: (canvas: HTMLCanvasElement) => void;
-  answeredQuestions: Set<number>;
   setActiveQuestionIdx: (index: number) => void;
   setAnsweredQuestions: (setter: (prev: Set<number>) => Set<number>) => void;
   activeQuestionIdx: number;
@@ -1443,6 +1712,9 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [q2Part, setQ2Part] = useState(1);
+  const [candidateSequence, setCandidateSequence] = useState(2793);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [focusCountdown, setFocusCountdown] = useState<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -1496,6 +1768,51 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
   useEffect(() => {
     if (question.id !== 2) setQ2Part(1);
   }, [question.id]);
+
+  useEffect(() => {
+    setCandidateSequence(initialCandidateSequence ?? getStoredAssessmentSequence());
+  }, [initialCandidateSequence]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!navigator.mediaDevices?.enumerateDevices) return undefined;
+
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((devices) => {
+        if (!cancelled) {
+          setCameraReady(devices.some((device) => device.kind === "videoinput"));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCameraReady(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isIntroductionPhase || focusCountdown !== null) return;
+
+    void enterFullscreenFocus();
+    setFocusCountdown(3);
+
+    const interval = window.setInterval(() => {
+      setFocusCountdown((value) => {
+        if (value === null) return null;
+        if (value <= 1) {
+          window.clearInterval(interval);
+          return null;
+        }
+        return value - 1;
+      });
+    }, 900);
+
+    return () => window.clearInterval(interval);
+  }, [isIntroductionPhase, focusCountdown]);
 
   const buildSegmentDescriptor = useCallback((q: Question, partOverride?: number): SegmentDescriptor => {
     const resolvedPart = q.id === 2 ? (partOverride ?? 1) : 0;
@@ -1944,6 +2261,13 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
 
   useEffect(() => { if (ended) setAvatarState({ ai: "ended", human: "ended" }); }, [ended]);
 
+  useEffect(() => {
+    if (!isFinished || typeof document === "undefined" || !document.fullscreenElement) return;
+    const exit = document.exitFullscreen?.bind(document);
+    if (!exit) return;
+    void exit().catch(() => {});
+  }, [isFinished]);
+
   const publishPlayground = useCallback((canvas: HTMLCanvasElement) => {
     pendingCanvasRef.current = canvas;
     if (room.state === ConnectionState.Connected) doPublish(canvas);
@@ -2022,421 +2346,375 @@ function InterviewStage({ name, isIntroductionPhase, setIsIntroductionPhase, que
     idle: "Waiting for you…", speaking: "Speaking…", listening: "Listening to you…",
     thinking: "Thinking…", ended: "Interview Complete",
   };
-  const stateColor: Record<AvatarState, string> = {
-    idle: "text-violet-300/60", speaking: "text-pink-400", listening: "text-cyan-300",
-    thinking: "text-amber-300", ended: "text-white/30",
-  };
+  const progressPercent = useMemo(() => {
+    const base = ((activeQuestionIdx + 1) / QUESTIONS.length) * 100;
+    if (question.id !== 2) return base;
+    return ((activeQuestionIdx + Math.max(1, q2Part) / 3) / QUESTIONS.length) * 100;
+  }, [activeQuestionIdx, question.id, q2Part]);
 
   // Thank You screen
   if (isFinished) {
     return (
-      <div className="min-h-[100dvh] h-[100dvh] flex flex-col items-center justify-center relative overflow-hidden bg-[#060810]">
-        <div className="pointer-events-none fixed inset-0 -z-10">
-          <div className="absolute top-[-5%] left-[5%] w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px] animate-float" />
-          <div className="absolute bottom-[-5%] right-[5%] w-[400px] h-[400px] rounded-full bg-cyan-500/10 blur-[100px] animate-float-delayed" />
-        </div>
-        <div className="text-center max-w-lg mx-auto px-8 space-y-8">
-          {/* Icon */}
-          <div className="relative w-28 h-28 mx-auto">
-            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/30 to-cyan-500/30 rounded-full blur-2xl animate-pulse" />
-            <div className="relative w-28 h-28 rounded-full bg-gradient-to-br from-fuchsia-600/40 to-cyan-600/40 border border-fuchsia-400/30 flex items-center justify-center">
-              <svg className="w-14 h-14 text-fuchsia-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+      <div className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-slate-50 px-6 py-10">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-10"
+        >
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 mb-6">
+            <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
+            </svg>
+          </div>
+
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Assessment submitted</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            Your AESTR interview is complete.
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600">
+            Your responses have been captured and sent for review. Faculty and AI evaluation will
+            continue from here.
+          </p>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Candidate</p>
+              <p className="mt-1.5 text-lg font-bold text-slate-900">#{candidateSequence}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Status</p>
+              <p className="mt-1.5 text-lg font-bold text-slate-900">Under review</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Platform</p>
+              <p className="mt-1.5 text-lg font-bold text-slate-900">AESTR</p>
             </div>
           </div>
-          {/* Text */}
-          <div className="space-y-3">
-            <h1 className="text-4xl font-black bg-gradient-to-r from-fuchsia-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-              Thank You!
-            </h1>
-            <p className="text-white/70 text-lg font-medium">Your interview has been submitted successfully.</p>
-            <p className="text-white/40 text-sm leading-relaxed">
-              We appreciate you taking the time to complete this assessment.<br />
-              Our team will review your responses and get back to you soon.
-            </p>
-          </div>
-          {/* Branding */}
-          <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full glass border border-white/10">
-            <span className="text-sm">⚡</span>
-            <span className="text-white/50 text-xs font-medium tracking-wider">Aster Screening · Gyan Vihar University</span>
-          </div>
-        </div>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[100dvh] h-[100dvh] flex flex-col relative overflow-hidden">
-      {/* Ambient neon background */}
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute top-[-5%] left-[5%] w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px] animate-float" />
-        <div className="absolute top-[15%] right-[5%] w-[350px] h-[350px] rounded-full bg-cyan-500/10 blur-[100px] animate-float-delayed" />
-        <div className="absolute bottom-[-5%] left-[40%] w-[500px] h-[500px] rounded-full bg-purple-500/8 blur-[140px] animate-float" style={{ animationDelay: "2s" }} />
-      </div>
+    <div className="relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-slate-50 text-slate-900">
+      <FocusCountdownOverlay value={focusCountdown} />
 
-      {/* Header with gamification score */}
-      <header className="glass border-b border-white/5 px-3 py-1.5 sm:px-4 sm:py-2 flex items-center justify-between shrink-0 z-10 relative">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-fuchsia-500/40 to-cyan-500/40 border border-fuchsia-400/40 flex items-center justify-center shadow-lg shadow-fuchsia-500/30">
-            <span className="text-sm">⚡</span>
+      <header className="relative z-20 shrink-0 border-b border-slate-200 bg-white shadow-sm">
+        <div className="px-4 py-4 lg:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                <span className="text-sm font-bold tracking-widest">AE</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
+                <h1 className="text-lg font-bold tracking-tight text-slate-900">
+                  University Admission Screening
+                </h1>
+                <p className="text-sm font-medium text-slate-500">Candidate: {name}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <SignalBadge label="Sequence" value={`#${candidateSequence}`} />
+              <SignalBadge
+                label="Camera"
+                value={cameraReady ? "Ready" : "Unavailable"}
+                tone={cameraReady ? "live" : "warning"}
+              />
+              <SignalBadge label="Mic" value="Live" tone="live" />
+              {!isIntroductionPhase && (
+                <SignalBadge label="Progress" value={`${Math.round(progressPercent)}%`} />
+              )}
+              <Timer minutes={10} onEnd={() => setEnded(true)} />
+            </div>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="font-bold text-sm shimmer-text">Aster Screening</span>
-            <span className="text-white/20 text-xs hidden sm:inline">AI Interview</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-fuchsia-500/15 border border-fuchsia-400/30 text-xs text-fuchsia-300 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-pulse shadow-sm shadow-fuchsia-400" />
-            Live
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-white/30 hidden sm:block">{name}</span>
-          <Timer minutes={10} onEnd={() => setEnded(true)} />
+
+          {!isIntroductionPhase && (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+                <span>{questionSequenceLabel(question, q2Part)}</span>
+                <span>{Math.round(progressPercent)}% complete</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <motion.div
+                  className="h-full rounded-full bg-blue-500"
+                  animate={{ width: `${progressPercent}%` }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* Main content - Intro vs Question phase */}
       {isIntroductionPhase ? (
-        // Introduction phase: stunning cosmic experience
-        <div className="relative flex-1 overflow-hidden">
-          {/* Animated cosmic background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950">
-            {/* Floating particles */}
-            <div className="absolute inset-0">
-              {[...Array(50)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    animationDelay: `${Math.random() * 5}s`,
-                    animationDuration: `${3 + Math.random() * 4}s`,
-                    opacity: Math.random() * 0.8 + 0.2,
-                    boxShadow: '0 0 6px rgba(255,255,255,0.8)'
-                  }}
-                />
-              ))}
-            </div>
-            
-            {/* Nebula clouds */}
-            <div className="absolute inset-0">
-              <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
-              <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-pink-600/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '12s', animationDelay: '4s' }} />
-            </div>
-            
-            {/* Animated grid lines */}
-            <svg className="absolute inset-0 w-full h-full opacity-20">
-              <defs>
-                <linearGradient id="grid" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.3" />
-                </linearGradient>
-              </defs>
-              <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="url(#grid)" strokeWidth="1" />
-              </pattern>
-              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
-            </svg>
-          </div>
-
-          {/* Central content */}
-          <div className="relative flex-1 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto overscroll-contain">
-            {/* Glowing title */}
-            <div className="mb-6 sm:mb-12 text-center px-2">
-              <h1 className="text-3xl sm:text-5xl md:text-7xl font-black bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 sm:mb-4 animate-pulse" style={{ animationDuration: '3s' }}>
-                AI Interview
-              </h1>
-              <p className="text-base sm:text-lg md:text-xl text-white/60 font-light tracking-wider">Gyan Vihar University</p>
-            </div>
-
-            {/* Avatar connection system */}
-            <div className="relative mb-6 sm:mb-12 w-full max-w-[min(100%,28rem)] sm:max-w-none">
-              {/* Connection lines */}
-              <svg className="absolute inset-0 w-full max-w-[400px] h-[200px] -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 pointer-events-none hidden sm:block">
-                <defs>
-                  <linearGradient id="connection" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
-                    <stop offset="50%" stopColor="#8b5cf6" stopOpacity="0.6" />
-                    <stop offset="100%" stopColor="#ec4899" stopOpacity="0.8" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M 100 100 Q 200 50 300 100"
-                  stroke="url(#connection)"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeDasharray="5 5"
-                  className="animate-pulse"
-                  style={{ animationDuration: '2s' }}
-                />
-                <circle cx="200" cy="75" r="3" fill="#8b5cf6" className="animate-ping" style={{ animationDuration: '2s' }} />
-              </svg>
-
-              {/* Avatar cards */}
-              <div className="grid grid-cols-2 gap-4 sm:gap-10 md:gap-16 relative z-10 justify-items-center">
-                {/* Human Avatar */}
-                <div className="relative group w-full max-w-[9.5rem] sm:max-w-[14rem] md:max-w-none">
-                  {/* Glow effect */}
-                  <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s' }} />
-                  
-                  <div className="relative glass backdrop-blur-xl rounded-full p-4 sm:p-8 border border-cyan-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:rotate-3 aspect-square w-full max-w-[11rem] sm:max-w-[16rem] md:w-64 md:h-64 md:max-w-none flex flex-col items-center justify-center mx-auto">
-                    {/* Animated background */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/10 to-blue-600/10 animate-pulse" style={{ animationDuration: '3s' }} />
-                    
-                    {/* Speaking indicator */}
-                    {avatarState.human === "speaking" && !ended && (
-                      <div className="absolute top-4 right-4">
-                        <div className="w-4 h-4 bg-cyan-400 rounded-full animate-ping" />
-                        <div className="w-4 h-4 bg-cyan-400 rounded-full absolute top-0" />
-                      </div>
-                    )}
-                    
-                    <div className="relative z-10 flex flex-col items-center space-y-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl animate-pulse" style={{ animationDuration: '2s' }} />
-                        <HumanAvatar state={ended ? "ended" : avatarState.human} />
-                      </div>
-                      <div className="text-center">
-                        <h3 className="text-sm sm:text-xl font-bold text-cyan-100 mb-0.5 sm:mb-1 truncate max-w-[9rem] sm:max-w-none">{name}</h3>
-                        <p className="text-[10px] sm:text-sm text-cyan-300/70 font-medium">
-                          {avatarState.human === "speaking" ? "🎤 Speaking" : "👂 Listening"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* AI Avatar */}
-                <div className="relative group w-full max-w-[9.5rem] sm:max-w-[14rem] md:max-w-none">
-                  {/* Glow effect */}
-                  <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 animate-pulse" style={{ animationDuration: '4s', animationDelay: '2s' }} />
-                  
-                  <div className="relative glass backdrop-blur-xl rounded-full p-4 sm:p-8 border border-fuchsia-400/30 overflow-hidden transform transition-all duration-500 hover:scale-105 hover:-rotate-3 aspect-square w-full max-w-[11rem] sm:max-w-[16rem] md:w-64 md:h-64 md:max-w-none flex flex-col items-center justify-center mx-auto">
-                    {/* Animated background */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10 animate-pulse" style={{ animationDuration: '3s', animationDelay: '1s' }} />
-                    
-                    {/* Speaking indicator */}
-                    {avatarState.ai === "speaking" && !ended && (
-                      <div className="absolute top-4 right-4">
-                        <div className="w-4 h-4 bg-fuchsia-400 rounded-full animate-ping" />
-                        <div className="w-4 h-4 bg-fuchsia-400 rounded-full absolute top-0" />
-                      </div>
-                    )}
-                    
-                    <div className="relative z-10 flex flex-col items-center space-y-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-fuchsia-400/30 rounded-full blur-xl animate-pulse" style={{ animationDuration: '2s' }} />
-                        <AIAvatar state={ended ? "ended" : avatarState.ai} />
-                      </div>
-                      <div className="text-center">
-                        <h3 className="text-sm sm:text-xl font-bold text-fuchsia-100 mb-0.5 sm:mb-1">AI Interviewer</h3>
-                        <p className="text-[10px] sm:text-sm text-fuchsia-300/70 font-medium">
-                          {avatarState.ai === "speaking" ? "🎤 Speaking" : avatarState.ai === "thinking" ? "🤔 Thinking" : "👂 Listening"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Status message */}
-            <div className="text-center space-y-4">
-              <div className="inline-flex items-center space-x-2 px-6 py-3 rounded-full glass backdrop-blur-md border border-white/20">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span className="text-white/80 font-medium">Introduction Phase</span>
-              </div>
-              <p className="text-white/40 text-sm max-w-md mx-auto">
-                Getting to know each other before we begin the questions
+        <div className="flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6">
+          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1fr_360px]">
+            <motion.section
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+            >
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Interview introduction</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                AESTR Admission Screening Interview
+              </h2>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+                This assessment is timed, AI monitored, and designed to reflect the pace and
+                seriousness of a real university interview. Stay focused, answer clearly, and be
+                ready to explain your reasoning aloud.
               </p>
-            </div>
+
+              <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Duration</p>
+                  <p className="mt-1.5 text-lg font-bold text-slate-900">10 minutes</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Microphone</p>
+                  <p className="mt-1.5 text-lg font-bold text-slate-900">Required</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Camera</p>
+                  <p className="mt-1.5 text-lg font-bold text-slate-900">
+                    {cameraReady ? "Ready" : "Check device"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Sequence</p>
+                  <p className="mt-1.5 text-lg font-bold text-slate-900">#{candidateSequence}</p>
+                </div>
+              </div>
+
+              <div className="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">Assessment notice</p>
+                <p className="mt-2 text-sm leading-6 text-blue-900">
+                  Your responses are reviewed by AI and admissions staff. The system will enter
+                  fullscreen focus mode as soon as questioning begins, followed by a short
+                  countdown.
+                </p>
+              </div>
+            </motion.section>
+
+            <motion.section
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="grid gap-6"
+            >
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
+                    <p className="mt-3 text-center text-sm font-bold text-slate-900">{name}</p>
+                    <p className="mt-1 text-center text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                      {stateLabel[ended ? "ended" : avatarState.human]}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
+                    <p className="mt-3 text-center text-sm font-bold text-slate-900">AESTR Interviewer</p>
+                    <p className="mt-1 text-center text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                      {stateLabel[ended ? "ended" : avatarState.ai]}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current state</p>
+                <h3 className="mt-2 text-xl font-bold text-slate-900">Introduction in progress</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  The interviewer is establishing the session before switching to assessment mode.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <SignalBadge label="Status" value="Live session" tone="live" />
+                  <SignalBadge label="Focus" value="Countdown pending" />
+                </div>
+              </div>
+            </motion.section>
           </div>
         </div>
       ) : (
-        // Question phase: primary column gets all flexible height; transcript sits below on mobile (never overlays).
-        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_380px] gap-2 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-hidden min-h-0">
-          {/* Question + Canvas panel */}
-          <section className="glass rounded-2xl flex flex-col border border-white/8 flex-1 min-h-0 isolate relative z-[1] overflow-hidden touch-pan-y">
-            <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto lg:overflow-hidden flex flex-col">
-            {/* Question tabs — display only, no student navigation */}
-            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/5 shrink-0">
-              <div className="flex items-center gap-1 overflow-x-auto pb-0.5 -mb-0.5 touch-pan-x [scrollbar-width:thin]">
-                {QUESTIONS.map((q, i) => (
-                  <div
-                    key={q.id}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider select-none flex items-center gap-1.5 ${
-                      activeQuestionIdx === i
-                        ? "bg-fuchsia-500/25 border border-fuchsia-400/50 text-fuchsia-200 shadow-sm shadow-fuchsia-500/30"
-                        : answeredQuestions.has(q.id)
-                          ? "bg-green-500/15 border border-green-400/40 text-green-300"
-                          : i > activeQuestionIdx
-                            ? "bg-white/3 border border-white/8 text-white/20 cursor-not-allowed"
-                            : "bg-white/5 border border-white/10 text-white/40"
-                    }`}
-                  >
-                    {answeredQuestions.has(q.id) ? (
-                      <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                      </svg>
-                    ) : i > activeQuestionIdx ? (
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                      </svg>
-                    ) : null}
-                    Q{q.id}
-                  </div>
-                ))}
-              </div>
-              <span className="text-[10px] text-white/25 hidden sm:flex items-center gap-1.5 shrink-0">
-                <span className="w-1 h-1 rounded-full bg-fuchsia-400 animate-pulse" />
-                The AI sees what you see
-              </span>
-            </div>
-
-            <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
-              <QuestionPanel 
-                key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
-                answeredQuestions={answeredQuestions} 
-                question={question} 
-                frozen={frozen} 
-                segmentId={`Q${question.id}${question.id === 2 ? `-P${q2Part}` : ""}`}
-                onCanvasReady={publishPlayground}
-                setActiveQuestionIdx={setActiveQuestionIdx}
-                setAnsweredQuestions={setAnsweredQuestions}
-                q2Part={q2Part}
-                setQ2Part={setQ2Part}
-                onActivitySnapshot={(snapshot) => {
-                  segmentInteractionRef.current.set(snapshot.segment_id, snapshot);
-                }}
-              />
-            </div>
-            </div>
-
-            {/* Pinned footer — outside scroll; Q2 parts 1–2 use in-panel Next Part only */}
-            {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
-              <div className="px-3 pt-2 pb-3 shrink-0 border-t border-white/10 bg-[#0a0d18]/90 backdrop-blur-md">
-                <button
-                  type="button"
-                  onClick={() => navigateToNext()}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-fuchsia-600/30 to-purple-600/30 hover:from-fuchsia-600/50 hover:to-purple-600/50 border border-fuchsia-400/40 text-fuchsia-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-fuchsia-500/20 flex items-center justify-center gap-2"
-                >
-                  Submit & Next
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                  </svg>
-                </button>
-              </div>
-            )}
-            {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
-              <div className="px-3 pt-2 pb-3 shrink-0 border-t border-white/10 bg-[#0a0d18]/90 backdrop-blur-md">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (currentSegmentRef.current) {
-                      const frozen = freezeSegmentForUpload(currentSegmentRef.current, "finish_click");
-                      currentSegmentRef.current = null;
-                      if (frozen) {
-                        await uploadSegmentArtifact(frozen.segment, frozen.reason, frozen.activitySummary, frozen.blobPromise);
-                      }
-                    }
-                    const payload = { type: "question_changed", code: QUESTIONS.length - 1, questionId: question.id, question: question.question, kind: question.kind, finish: true };
-                    publishFinish(payload);
-                    setIsFinished(true);
-                  }}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border border-green-400/40 text-green-200 transition-all hover:scale-[1.01] active:scale-[0.99] shadow-sm shadow-green-500/20 flex items-center justify-center gap-2"
-                >
-                  Finish Interview
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-              </div>
-            )}
-          </section>
-
-          {/* AI panel: mobile = avatars stacked + transcript beside (short strip); lg = avatars row + transcript below */}
-          <aside className="flex flex-col gap-2 min-h-0 overflow-hidden shrink-0 relative z-0 max-lg:max-h-[min(22svh,200px)] lg:max-h-none lg:h-full lg:min-h-0">
-            <div className="flex flex-row lg:flex-col gap-2 min-h-0 flex-1 min-w-0 items-stretch">
-              {/* Avatar column: vertical on mobile, two-up on lg */}
-              <div className="grid grid-flow-row grid-cols-1 auto-rows-min lg:grid-cols-2 lg:grid-flow-row gap-1 lg:gap-2 shrink-0 max-lg:w-[5.5rem] lg:w-auto">
-                {/* Human Avatar - Cyan */}
-                <div className="glass rounded-xl lg:rounded-2xl px-1 py-1 lg:px-2 lg:py-2 flex flex-col items-center gap-0.5 lg:gap-1 border border-cyan-400/20 relative max-lg:overflow-visible lg:overflow-hidden">
-                  <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700 rounded-xl lg:rounded-2xl"
-                    style={{
-                      background: avatarState.human === "speaking" ? "radial-gradient(circle at 50% 30%, rgba(0,240,255,0.3), transparent 60%)"
-                        : "radial-gradient(circle at 50% 30%, rgba(6,182,212,0.1), transparent 60%)",
-                    }}
-                  />
-                  <div className="flex items-center justify-center shrink-0 max-lg:scale-[0.48] max-lg:origin-center max-lg:-my-0.5">
-                    <HumanAvatar state={ended ? "ended" : avatarState.human} />
-                  </div>
-                  <div className="text-center space-y-0 relative z-10 max-lg:px-0.5">
-                    <p className="text-[8px] lg:text-xs font-bold text-cyan-100 truncate max-w-[5rem] lg:max-w-none">{name}</p>
-                    <p className="text-[7px] lg:text-[9px] font-medium text-cyan-300/70 leading-tight">
-                      {avatarState.human === "speaking" ? "Speaking" : "Idle"}
+        <div className="flex-1 overflow-hidden px-4 py-4 lg:px-6 lg:pb-6">
+          <div className="grid h-full gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="min-h-0 overflow-hidden">
+              <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-6 grid gap-4 shrink-0 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Focus mode</p>
+                    <p className="mt-1.5 text-sm font-bold text-slate-900">Assessment shell active</p>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                      Minimal chrome, fullscreen prompt, and persistent timing controls.
                     </p>
                   </div>
-                  {avatarState.human === "speaking" && !ended && (
-                    <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 lg:top-1 lg:right-1 lg:w-2 lg:h-2 rounded-full bg-cyan-400 animate-pulse shadow-lg shadow-cyan-400" />
-                  )}
-                </div>
-
-                {/* AI Avatar - Magenta */}
-                <div className="glass rounded-xl lg:rounded-2xl px-1 py-1 lg:px-2 lg:py-2 flex flex-col items-center gap-0.5 lg:gap-1 border border-fuchsia-400/20 relative max-lg:overflow-visible lg:overflow-hidden">
-                  <div className="absolute inset-0 opacity-30 pointer-events-none transition-all duration-700 rounded-xl lg:rounded-2xl"
-                    style={{
-                      background: avatarState.ai === "speaking" ? "radial-gradient(circle at 50% 30%, rgba(255,0,255,0.3), transparent 60%)"
-                        : avatarState.ai === "thinking" ? "radial-gradient(circle at 50% 30%, rgba(245,158,11,0.2), transparent 60%)"
-                        : "radial-gradient(circle at 50% 30%, rgba(176,38,255,0.1), transparent 60%)",
-                    }}
-                  />
-                  <div className="flex items-center justify-center shrink-0 max-lg:scale-[0.48] max-lg:origin-center max-lg:-my-0.5">
-                    <AIAvatar state={ended ? "ended" : avatarState.ai} />
-                  </div>
-                  <div className="text-center space-y-0 relative z-10">
-                    <p className="text-[8px] lg:text-xs font-bold text-fuchsia-100">AI</p>
-                    <p className="text-[7px] lg:text-[9px] font-medium text-fuchsia-300/70 leading-tight">
-                      {avatarState.ai === "speaking" ? "Speaking" : avatarState.ai === "thinking" ? "Thinking" : "Idle"}
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">AI status</p>
+                    <p className="mt-1.5 text-sm font-bold text-slate-900">
+                      {avatarState.ai === "thinking" ? "Analyzing response" : "Listening live"}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                      {avatarState.ai === "thinking"
+                        ? "The interviewer is evaluating your latest response."
+                        : "Your reasoning is being evaluated continuously as you speak."}
                     </p>
                   </div>
-                  {avatarState.ai === "speaking" && !ended && (
-                    <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 lg:top-1 lg:right-1 lg:w-2 lg:h-2 rounded-full bg-fuchsia-400 animate-pulse shadow-lg shadow-fuchsia-400" />
-                  )}
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Response mode</p>
+                    <p className="mt-1.5 text-sm font-bold text-slate-900">
+                      {question.kind === "satellite" || question.kind === "differentiability"
+                        ? "Voice + interaction"
+                        : "Voice response"}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                      Use the prompt and media frame together when the task requires it.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Transcript beside avatars on mobile */}
-              {!isIntroductionPhase && (
-                <div className="flex-1 flex flex-col min-h-0 min-w-0 lg:min-h-[12rem]">
-                  <div className="glass rounded-xl lg:rounded-2xl flex flex-col overflow-hidden min-h-0 border border-white/8 h-full">
-                    <div className="flex items-center justify-between px-2 py-1.5 lg:px-3 lg:py-2 border-b border-white/5 shrink-0">
-                      <div className="flex items-center gap-1.5 lg:gap-2 min-w-0">
-                        <div className="w-1 h-1 lg:w-1.5 lg:h-1.5 rounded-full bg-fuchsia-400/60 animate-pulse shrink-0" />
-                        <span className="text-[10px] lg:text-xs font-medium text-white/50 truncate">Transcript</span>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <AnimatePresence mode="wait">
+                    <QuestionPanel
+                      key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
+                      question={question}
+                      frozen={frozen}
+                      segmentId={`Q${question.id}${question.id === 2 ? `-P${q2Part}` : ""}`}
+                      onCanvasReady={publishPlayground}
+                      q2Part={q2Part}
+                      setQ2Part={setQ2Part}
+                      onActivitySnapshot={(snapshot) => {
+                        segmentInteractionRef.current.set(snapshot.segment_id, snapshot);
+                      }}
+                    />
+                  </AnimatePresence>
+                </div>
+
+                {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
+                  <div className="mt-6 shrink-0 border-t border-slate-100 pt-6">
+                    <button
+                      type="button"
+                      onClick={() => navigateToNext()}
+                      className="btn-primary flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+                    >
+                      Submit and continue
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+
+                {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
+                  <div className="mt-6 shrink-0 border-t border-slate-100 pt-6">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (currentSegmentRef.current) {
+                          const currentFrozen = freezeSegmentForUpload(currentSegmentRef.current, "finish_click");
+                          currentSegmentRef.current = null;
+                          if (currentFrozen) {
+                            await uploadSegmentArtifact(
+                              currentFrozen.segment,
+                              currentFrozen.reason,
+                              currentFrozen.activitySummary,
+                              currentFrozen.blobPromise,
+                            );
+                          }
+                        }
+                        const payload = {
+                          type: "question_changed",
+                          code: QUESTIONS.length - 1,
+                          questionId: question.id,
+                          question: question.question,
+                          kind: question.kind,
+                          finish: true,
+                        };
+                        publishFinish(payload);
+                        setIsFinished(true);
+                      }}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                    >
+                      Finish interview
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <aside className="min-h-0 overflow-hidden">
+              <div className="grid h-full gap-5 xl:grid-rows-[auto_auto_minmax(0,1fr)]">
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{name}</p>
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                          Candidate channel
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {stateLabel[ended ? "ended" : avatarState.human]}
+                        </p>
                       </div>
-                      {transcript.length > 0 && (
-                        <span className="text-[9px] lg:text-[10px] text-white/25 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/8 shrink-0">
-                          {transcript.length}
-                        </span>
-                      )}
                     </div>
-                    <TranscriptView entries={transcript} />
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">AESTR Interviewer</p>
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                          Evaluation channel
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {stateLabel[ended ? "ended" : avatarState.ai]}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
 
-            {ended && (
-              <div className="rounded-xl lg:rounded-2xl p-3 lg:p-5 text-center animate-fade-up shrink-0 border border-pink-400/30 bg-gradient-to-br from-pink-500/10 to-purple-500/10 w-full">
-                <div className="text-2xl lg:text-3xl mb-1 lg:mb-2">🎓</div>
-                <p className="text-xs lg:text-sm font-bold shimmer-text">Interview Complete</p>
-                <p className="text-[10px] lg:text-xs text-white/40 mt-1 lg:mt-1.5 leading-relaxed">Generating your evaluation…</p>
+                <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm overflow-hidden">
+                  <div className="shrink-0 mb-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Analysis state</p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">
+                      {ended
+                        ? "Finalizing evaluation"
+                        : avatarState.ai === "thinking"
+                          ? "Analyzing response"
+                          : "Monitoring live answer"}
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                      {ended
+                        ? "Your session has ended and the platform is packaging your final submission."
+                        : avatarState.ai === "thinking"
+                          ? "The interviewer is processing your latest response before continuing."
+                          : "Stay concise and speak clearly while the interviewer listens."}
+                    </p>
+                  </div>
+                  <div className="h-px w-full bg-slate-100 shrink-0 my-3" />
+                  <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between mb-3 shrink-0">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Transcript</p>
+                      </div>
+                      <div className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                        {transcript.length} entries
+                      </div>
+                    </div>
+                    <AssessmentTranscriptView entries={transcript} />
+                  </div>
+                </div>
               </div>
-            )}
-          </aside>
+            </aside>
+          </div>
         </div>
       )}
     </div>
