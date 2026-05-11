@@ -226,12 +226,12 @@ export default function InterviewPage() {
 function LoadingScreen() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="rounded-2xl border border-slate-200 bg-white px-8 py-9 text-center shadow-sm">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-xl bg-slate-50">
-          <div className="h-8 w-8 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
+      <div className="surface-panel rounded-2xl px-8 py-9 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+          <div className="h-8 w-8 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
         </div>
-        <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-slate-500">Preparing room</p>
-        <p className="mt-2 text-sm text-slate-600">Establishing your AESTR assessment session</p>
+        <p className="mt-5 text-[10px] font-bold uppercase tracking-widest text-slate-500">Preparing room</p>
+        <p className="mt-1.5 text-sm font-medium text-slate-700">Establishing your AESTR assessment session</p>
       </div>
     </main>
   );
@@ -286,12 +286,12 @@ function InterviewPageContent() {
 
   if (!token) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-6 bg-slate-50">
-        <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white px-8 py-9 text-center shadow-sm">
-          <div className="h-12 w-12 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="surface-panel flex max-w-md flex-col items-center gap-4 rounded-2xl px-8 py-9 text-center shadow-sm">
+          <div className="h-12 w-12 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Connecting</p>
-            <p className="mt-2 text-sm text-slate-600">Preparing your interview environment...</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Connecting</p>
+            <p className="mt-1.5 text-sm font-medium text-slate-700">Preparing your interview environment...</p>
           </div>
         </div>
       </main>
@@ -348,31 +348,50 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+          className="surface-panel max-w-3xl rounded-2xl p-6 sm:p-8 shadow-sm"
         >
-          <div className="text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-6">
-              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-              </svg>
+          <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Pre-flight check
+              </div>
+              <div className="relative flex h-56 items-center justify-center overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white shadow-sm">
+                <div className="absolute h-36 w-36 rounded-full border border-slate-100" />
+                <div className="absolute h-28 w-28 rounded-full border border-slate-200 animate-spin-slow" />
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-[1.25rem] border border-indigo-100 bg-indigo-50">
+                  <svg className="h-9 w-9 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                  </svg>
+                </div>
+              </div>
             </div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Access required</p>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-              Enable your microphone
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600 max-w-md mx-auto">
-              AESTR uses live audio monitoring throughout the interview. Once enabled, the
-              platform will transition into a distraction-free fullscreen experience.
-            </p>
 
-            <button
-              onClick={unlock}
-              className="btn-primary mt-8 inline-flex items-center justify-center rounded-lg px-6 py-3 text-sm font-semibold transition-colors w-full sm:w-auto"
-            >
-              Allow Microphone Access
-            </button>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Access required</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                Enable your microphone to enter the assessment environment.
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600">
+                AESTR uses live audio monitoring throughout the interview. Once enabled, the
+                platform will transition into a distraction-free fullscreen experience.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-2.5">
+                <SignalBadge label="Requirement" value="Microphone access" tone="live" />
+                <SignalBadge label="Mode" value="Fullscreen focus" />
+                <SignalBadge label="Monitoring" value="AI reviewed" />
+              </div>
+
+              <button
+                onClick={unlock}
+                className="btn-primary mt-8 inline-flex items-center justify-center rounded-xl px-6 py-3 text-sm font-semibold w-full sm:w-auto"
+              >
+                Enable microphone
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -383,7 +402,7 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
     <>
       {micOk === false && (
         <div
-          className="fixed left-1/2 z-40 max-w-[min(calc(100vw-1.5rem),24rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-600 shadow-sm bottom-[max(1rem,env(safe-area-inset-bottom))] lg:bottom-auto lg:top-4"
+          className="fixed left-1/2 z-40 max-w-[min(calc(100vw-1.5rem),24rem)] -translate-x-1/2 rounded-2xl border border-red-400/20 bg-red-500/12 px-4 py-3 text-center text-[11px] text-red-100 shadow-lg backdrop-blur-xl bottom-[max(1rem,env(safe-area-inset-bottom))] lg:bottom-auto lg:top-4"
           role="status"
         >
           Microphone access is blocked. Update browser permissions to continue.
@@ -586,15 +605,15 @@ function SignalBadge({
   tone?: "default" | "live" | "warning";
 }) {
   const toneClass = tone === "live"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
     : tone === "warning"
-      ? "border-orange-200 bg-orange-50 text-orange-700"
-      : "border-slate-200 bg-white text-slate-700";
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : "border-slate-200 bg-slate-50 text-slate-700";
 
   return (
-    <div className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${toneClass}`}>
-      <span className="mr-2 uppercase tracking-widest text-slate-500">{label}</span>
-      <span>{value}</span>
+    <div className={`rounded-full border px-2.5 py-1 text-[10px] ${toneClass} shadow-sm`}>
+      <span className="mr-1.5 font-bold uppercase tracking-widest opacity-70">{label}</span>
+      <span className="font-semibold">{value}</span>
     </div>
   );
 }
@@ -610,13 +629,13 @@ function AssessmentTranscriptView({ entries }: { entries: TranscriptEntry[] }) {
     return (
       <div className="flex min-h-[16rem] flex-1 items-center justify-center px-6 py-8 text-center">
         <div className="max-w-xs">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400 shadow-sm">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3h6m-9 7.5h12A2.25 2.25 0 0 0 18.75 16.5v-9A2.25 2.25 0 0 0 16.5 5.25h-9A2.25 2.25 0 0 0 5.25 7.5v9A2.25 2.25 0 0 0 7.5 18.75Z" />
             </svg>
           </div>
-          <p className="mt-4 text-sm font-medium text-slate-700">Live transcript will appear here</p>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
+          <p className="mt-3 text-sm font-semibold text-slate-800">Live transcript will appear here</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
             The assessment feed updates as the interviewer speaks and your responses are detected.
           </p>
         </div>
@@ -630,20 +649,20 @@ function AssessmentTranscriptView({ entries }: { entries: TranscriptEntry[] }) {
         <motion.div
           key={entry.id}
           layout
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className={`flex ${entry.who === "user" ? "justify-end" : "justify-start"}`}
         >
           <div
-            className={`max-w-[88%] rounded-2xl border px-4 py-3 text-sm leading-6 ${
+            className={`max-w-[88%] rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
               entry.who === "user"
-                ? "border-blue-200 bg-blue-50 text-slate-800"
-                : "border-slate-200 bg-white text-slate-800"
+                ? "border-slate-200 bg-white text-slate-800 rounded-tr-sm"
+                : "border-indigo-100 bg-indigo-50 text-indigo-950 rounded-tl-sm"
             }`}
           >
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest opacity-60">
               <span
-                className={`h-2 w-2 rounded-full ${entry.who === "user" ? "bg-blue-500" : "bg-emerald-500"}`}
+                className={`h-1.5 w-1.5 rounded-full ${entry.who === "user" ? "bg-slate-400" : "bg-indigo-400"}`}
               />
               {entry.who === "user" ? "Candidate" : "AESTR AI"}
             </div>
@@ -666,18 +685,16 @@ function AssessmentAvatar({
 }) {
   const palette = tone === "ai"
     ? {
-        ring: "border-emerald-200",
-        glow: "shadow-[0_0_40px_rgba(16,185,129,0.1)]",
-        inner: "bg-white",
-        accent: "bg-emerald-500",
-        text: "text-emerald-700",
+        ring: "border-indigo-200",
+        inner: "bg-indigo-50",
+        accent: "bg-indigo-500",
+        text: "text-indigo-900",
       }
     : {
-        ring: "border-blue-200",
-        glow: "shadow-[0_0_40px_rgba(59,130,246,0.1)]",
+        ring: "border-slate-200",
         inner: "bg-white",
-        accent: "bg-blue-500",
-        text: "text-blue-700",
+        accent: "bg-slate-500",
+        text: "text-slate-900",
       };
 
   const bars = state === "speaking";
@@ -685,38 +702,36 @@ function AssessmentAvatar({
   const ended = state === "ended";
 
   return (
-    <div className="relative flex h-28 w-28 items-center justify-center sm:h-32 sm:w-32">
-      <div className={`absolute inset-0 rounded-full border ${palette.ring} ${palette.glow}`} />
-      <div className="absolute inset-[10px] rounded-full border border-slate-100" />
+    <div className="relative flex h-20 w-20 items-center justify-center sm:h-24 sm:w-24">
+      <div className={`absolute inset-0 rounded-full border ${palette.ring} bg-white shadow-sm`} />
       <div
-        className={`absolute inset-[18px] rounded-full border border-slate-200 ${thinking ? "animate-spin-slow" : "animate-glow-breathe"}`}
-        style={thinking ? { animationDuration: "5s" } : undefined}
+        className={`absolute inset-2 rounded-full border border-slate-100 ${thinking ? "animate-spin-slow" : ""}`}
       />
       <div
-        className={`relative flex h-[72px] w-[72px] items-center justify-center rounded-full border border-slate-200 shadow-sm ${palette.inner} sm:h-[84px] sm:w-[84px]`}
+        className={`relative flex h-[60px] w-[60px] items-center justify-center rounded-full border border-slate-200 ${palette.inner} shadow-inner sm:h-[68px] sm:w-[68px]`}
       >
         {ended ? (
-          <svg className={`h-7 w-7 ${palette.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <svg className={`h-6 w-6 ${palette.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
           </svg>
         ) : bars ? (
           <div className="flex items-end gap-1">
-            {[18, 28, 22, 30].map((height, index) => (
+            {[14, 22, 16, 24].map((height, index) => (
               <span
                 key={`${label}-${height}`}
-                className={`block w-1.5 rounded-full ${palette.accent} animate-wave ${index % 2 === 0 ? "opacity-80" : ""}`}
+                className={`block w-1 rounded-full ${palette.accent} animate-wave ${index % 2 === 0 ? "opacity-80" : ""}`}
                 style={{ height, animationDelay: `${index * 0.1}s` }}
               />
             ))}
           </div>
         ) : thinking ? (
-          <div className="relative flex h-8 w-8 items-center justify-center">
-            <span className={`absolute h-2 w-2 rounded-full ${palette.accent}`} />
-            <span className={`absolute h-8 w-8 rounded-full border border-slate-300 animate-spin-slow`} />
+          <div className="relative flex h-6 w-6 items-center justify-center">
+            <span className={`absolute h-1.5 w-1.5 rounded-full ${palette.accent}`} />
+            <span className={`absolute h-6 w-6 rounded-full border-2 border-slate-200 border-t-${tone === 'ai' ? 'indigo' : 'slate'}-400 animate-spin`} />
           </div>
         ) : (
-          <span className={`text-lg font-semibold tracking-widest ${palette.text}`}>{label}</span>
+          <span className={`text-sm font-bold tracking-widest ${palette.text}`}>{label}</span>
         )}
       </div>
     </div>
@@ -731,20 +746,20 @@ function FocusCountdownOverlay({ value }: { value: number | null }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-md"
+          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-md"
         >
           <div className="text-center">
             <motion.p
               key={value}
-              initial={{ opacity: 0, scale: 0.84, y: 8 }}
+              initial={{ opacity: 0, scale: 0.9, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.08, y: -6 }}
-              transition={{ duration: 0.42, ease: "easeOut" }}
-              className="text-[6rem] font-bold tracking-tight text-slate-900 sm:text-[8rem]"
+              exit={{ opacity: 0, scale: 1.05, y: -4 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="text-[5rem] font-semibold tracking-tight text-slate-900 sm:text-[7rem]"
             >
               {value}
             </motion.p>
-            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
               Entering focus mode
             </p>
           </div>
@@ -1493,36 +1508,36 @@ function QuestionPanel({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: "easeOut" }}
       className="flex flex-1 flex-col gap-5 overflow-hidden"
     >
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 shrink-0">
+      <div className="surface-panel shrink-0 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
+              <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm">
                 {questionSequenceLabel(question, part)}
               </span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-600">
+              <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-500 shadow-sm">
                 {questionDiscipline(question)}
               </span>
               {isQ2 && (
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-600">
+                <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-500 shadow-sm">
                   Part {part} of 3
                 </span>
               )}
             </div>
 
-            <h2 className="mt-4 max-w-4xl text-xl font-bold leading-tight text-slate-900 sm:text-2xl">
+            <h2 className="mt-4 max-w-4xl text-2xl font-semibold leading-snug text-slate-900 sm:text-3xl">
               {displayedQuestion}
             </h2>
           </div>
 
           <button
             onClick={() => setShowContext(!showContext)}
-            className="btn-secondary inline-flex shrink-0 items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
+            className="btn-secondary inline-flex shrink-0 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
           >
             {showContext ? "Hide context" : "View context"}
           </button>
@@ -1536,47 +1551,47 @@ function QuestionPanel({
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-line">{question.context}</p>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">{question.context}</p>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <div className="grid flex-1 gap-5 xl:grid-cols-[1fr_1.5fr] xl:min-h-0">
-        <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Response guidance</p>
-          <p className="mt-2 text-sm leading-relaxed text-slate-700">{responseGuidance}</p>
+      <div className="grid flex-1 gap-5 xl:grid-cols-[0.86fr_1.14fr] xl:min-h-0">
+        <div className="surface-muted flex flex-col rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response guidance</p>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-slate-700">{responseGuidance}</p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Input mode</p>
-              <p className="mt-1.5 text-sm font-bold text-slate-900">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Input mode</p>
+              <p className="mt-1.5 text-sm font-semibold text-slate-900">
                 {isInteractive ? "Interactive response" : "Voice response"}
               </p>
-              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              <p className="mt-1 text-sm leading-relaxed text-slate-500">
                 {isInteractive
                   ? "Manipulate the visual frame while explaining your reasoning aloud."
                   : "Think aloud clearly so the interviewer can assess your reasoning process."}
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Assessment note</p>
-              <p className="mt-1.5 text-sm font-bold text-slate-900">The interviewer sees this panel live</p>
-              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Assessment note</p>
+              <p className="mt-1.5 text-sm font-semibold text-slate-900">The interviewer sees this panel live</p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-500">
                 Keep your explanation structured and use the visual region when it supports your answer.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex min-h-[22rem] flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 xl:min-h-0">
+        <div className="surface-panel flex min-h-[22rem] flex-col rounded-2xl p-3 sm:p-4 xl:min-h-0 shadow-sm border border-slate-200">
           <div className="mb-3 flex items-center justify-between px-1 sm:px-2">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Media frame</p>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Media frame</p>
+              <p className="mt-0.5 text-xs font-medium text-slate-700">
                 {isInteractive ? "Use the workspace to support your response." : "Review the prompt visual before answering."}
               </p>
             </div>
@@ -1585,14 +1600,14 @@ function QuestionPanel({
               <button
                 onClick={clearStroke}
                 disabled={frozen}
-                className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40"
               >
                 Clear drawing
               </button>
             )}
           </div>
 
-          <div className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-[#000510] min-h-[22rem] xl:min-h-0">
+          <div className="relative flex-1 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 min-h-[22rem] xl:min-h-0 shadow-inner">
             <canvas
               ref={canvasRef}
               width={1280}
@@ -1603,31 +1618,31 @@ function QuestionPanel({
               onPointerCancel={onPointerUp}
               className={
                 isSatelliteInteractive
-                  ? `absolute inset-0 z-[2] h-full w-full touch-none rounded-[1rem] ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
+                  ? `absolute inset-4 z-[2] h-[calc(100%-2rem)] w-[calc(100%-2rem)] touch-none rounded-[0.75rem] ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
                   : isDiff
-                    ? "absolute inset-0 z-[2] h-full w-full touch-none rounded-[1rem] cursor-grab active:cursor-grabbing"
+                    ? "absolute inset-4 z-[2] h-[calc(100%-2rem)] w-[calc(100%-2rem)] touch-none rounded-[0.75rem] cursor-grab active:cursor-grabbing"
                     : "hidden"
               }
             />
 
             {!isInteractive && (
-              <div className="absolute inset-0 z-[2] flex items-center justify-center rounded-[1rem] bg-white p-4">
+              <div className="absolute inset-4 z-[2] flex items-center justify-center rounded-[0.75rem] border border-slate-700 bg-slate-800 p-4">
                 {question.kind === "gif" ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain" />
+                  <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain rounded-md" />
                 ) : isQ2TheoryPart ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={Q2_THEORY_GIF_URL} alt="Satellite theory visual" className="h-full w-full object-contain" />
+                  <img src={Q2_THEORY_GIF_URL} alt="Satellite theory visual" className="h-full w-full object-contain rounded-md" />
                 ) : isQ4BridgeGif ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="h-full w-full object-contain" />
+                  <img src={Q4_BRIDGE_GIF_URL} alt="Bridge puzzle visual" className="h-full w-full object-contain rounded-md" />
                 ) : isQ5LogicGif ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="h-full w-full object-contain" />
+                  <img src={Q5_LOGIC_GIF_URL} alt="Logic puzzle visual" className="h-full w-full object-contain rounded-md" />
                 ) : (
-                  <div className="max-w-xl rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Visual prompt</p>
-                    <p className="mt-3 text-sm leading-relaxed text-slate-700">
+                  <div className="max-w-xl rounded-xl border border-slate-600 bg-slate-700/50 p-6 text-center shadow-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Visual prompt</p>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-300">
                       Use the question text and respond aloud when you are ready to proceed.
                     </p>
                   </div>
@@ -1638,23 +1653,23 @@ function QuestionPanel({
         </div>
       </div>
 
-      <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="surface-muted shrink-0 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Answer area</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Answer area</p>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
               Speak clearly, keep your reasoning structured, and use the controls below when the task requires interaction.
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[16rem]">
+          <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[20rem]">
             {isSatelliteInteractive && (
               <button
                 onClick={toggleDrawMode}
                 disabled={frozen}
-                className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
+                className={`rounded-xl px-4 py-3 text-sm font-semibold transition-all disabled:opacity-40 ${
                   drawMode
-                    ? "bg-blue-50 border border-blue-200 text-blue-700"
+                    ? "border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm"
                     : "btn-secondary"
                 }`}
               >
@@ -1671,7 +1686,7 @@ function QuestionPanel({
                   setQ2Part((p) => Math.min(3, p + 1));
                 }}
                 disabled={frozen || !canAdvanceQ2Part}
-                className="btn-primary rounded-lg px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn-primary rounded-xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {canAdvanceQ2Part ? "Continue to next part" : "Complete the drawing to continue"}
               </button>
@@ -2209,8 +2224,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
             t.includes("first question") ||
             t.includes("question 1") ||
             t.includes("question one") ||
-            t.includes("on your screen") ||
-            t.includes("here is your first question") // Added this line
+            t.includes("on your screen")
           ) {
             introEndedAtRef.current = Date.now();
             setIsIntroductionPhase(false);
@@ -2358,38 +2372,38 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     return (
       <div className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-slate-50 px-6 py-10">
         <motion.div
-          initial={{ opacity: 0, y: 18 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-10"
+          className="surface-panel max-w-2xl rounded-2xl p-8 text-center sm:p-10 shadow-sm"
         >
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 mb-6">
-            <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[1.25rem] bg-emerald-50 text-emerald-600 shadow-sm">
+            <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
             </svg>
           </div>
 
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Assessment submitted</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+          <p className="mt-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Assessment submitted</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
             Your AESTR interview is complete.
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600">
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-slate-600">
             Your responses have been captured and sent for review. Faculty and AI evaluation will
             continue from here.
           </p>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Candidate</p>
-              <p className="mt-1.5 text-lg font-bold text-slate-900">#{candidateSequence}</p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Candidate</p>
+              <p className="mt-1.5 text-lg font-semibold text-slate-900">#{candidateSequence}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Status</p>
-              <p className="mt-1.5 text-lg font-bold text-slate-900">Under review</p>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Status</p>
+              <p className="mt-1.5 text-lg font-semibold text-slate-900">Under review</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Platform</p>
-              <p className="mt-1.5 text-lg font-bold text-slate-900">AESTR</p>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Platform</p>
+              <p className="mt-1.5 text-lg font-semibold text-slate-900">AESTR</p>
             </div>
           </div>
         </motion.div>
@@ -2398,19 +2412,19 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }
 
   return (
-    <div className="relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-slate-50 text-slate-900">
+    <div className="relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-slate-50">
       <FocusCountdownOverlay value={focusCountdown} />
 
-      <header className="relative z-20 shrink-0 border-b border-slate-200 bg-white shadow-sm">
+      <header className="surface-panel relative z-20 shrink-0 border-b border-slate-200 shadow-sm">
         <div className="px-4 py-4 lg:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
                 <span className="text-sm font-bold tracking-widest">AE</span>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
-                <h1 className="text-lg font-bold tracking-tight text-slate-900">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
+                <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">
                   University Admission Screening
                 </h1>
                 <p className="text-sm font-medium text-slate-500">Candidate: {name}</p>
@@ -2434,13 +2448,13 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
 
           {!isIntroductionPhase && (
             <div className="mt-4">
-              <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 <span>{questionSequenceLabel(question, q2Part)}</span>
                 <span>{Math.round(progressPercent)}% complete</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
                 <motion.div
-                  className="h-full rounded-full bg-blue-500"
+                  className="h-full rounded-full bg-indigo-500"
                   animate={{ width: `${progressPercent}%` }}
                   transition={{ duration: 0.35, ease: "easeOut" }}
                 />
@@ -2452,46 +2466,46 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
 
       {isIntroductionPhase ? (
         <div className="flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6">
-          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.08fr_0.92fr]">
             <motion.section
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+              className="surface-panel rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200"
             >
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Interview introduction</p>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Interview introduction</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 AESTR Admission Screening Interview
               </h2>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
                 This assessment is timed, AI monitored, and designed to reflect the pace and
                 seriousness of a real university interview. Stay focused, answer clearly, and be
                 ready to explain your reasoning aloud.
               </p>
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Duration</p>
-                  <p className="mt-1.5 text-lg font-bold text-slate-900">10 minutes</p>
+              <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Duration</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">10 minutes</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Microphone</p>
-                  <p className="mt-1.5 text-lg font-bold text-slate-900">Required</p>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Microphone</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">Required</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Camera</p>
-                  <p className="mt-1.5 text-lg font-bold text-slate-900">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Camera</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
                     {cameraReady ? "Ready" : "Check device"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Sequence</p>
-                  <p className="mt-1.5 text-lg font-bold text-slate-900">#{candidateSequence}</p>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Sequence</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">#{candidateSequence}</p>
                 </div>
               </div>
 
-              <div className="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-5">
-                <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">Assessment notice</p>
-                <p className="mt-2 text-sm leading-6 text-blue-900">
+              <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Assessment notice</p>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
                   Your responses are reviewed by AI and admissions staff. The system will enter
                   fullscreen focus mode as soon as questioning begins, followed by a short
                   countdown.
@@ -2500,37 +2514,41 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
             </motion.section>
 
             <motion.section
-              initial={{ opacity: 0, x: 16 }}
+              initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
               className="grid gap-6"
             >
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex flex-col items-center justify-center rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
-                    <p className="mt-3 text-center text-sm font-bold text-slate-900">{name}</p>
-                    <p className="mt-1 text-center text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              <div className="surface-panel rounded-2xl p-6 shadow-sm border border-slate-200">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                    <div className="flex items-center justify-center">
+                      <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
+                    </div>
+                    <p className="mt-4 text-center text-sm font-semibold text-slate-900">{name}</p>
+                    <p className="mt-1 text-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       {stateLabel[ended ? "ended" : avatarState.human]}
                     </p>
                   </div>
 
-                  <div className="flex flex-col items-center justify-center rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
-                    <p className="mt-3 text-center text-sm font-bold text-slate-900">AESTR Interviewer</p>
-                    <p className="mt-1 text-center text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-5">
+                    <div className="flex items-center justify-center">
+                      <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
+                    </div>
+                    <p className="mt-4 text-center text-sm font-semibold text-slate-900">AESTR Interviewer</p>
+                    <p className="mt-1 text-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       {stateLabel[ended ? "ended" : avatarState.ai]}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current state</p>
-                <h3 className="mt-2 text-xl font-bold text-slate-900">Introduction in progress</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
+              <div className="surface-panel rounded-2xl p-6 shadow-sm border border-slate-200">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Current state</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Introduction in progress</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
                   The interviewer is establishing the session before switching to assessment mode.
                 </p>
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-5 flex flex-wrap gap-2.5">
                   <SignalBadge label="Status" value="Live session" tone="live" />
                   <SignalBadge label="Focus" value="Countdown pending" />
                 </div>
@@ -2540,20 +2558,20 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
         </div>
       ) : (
         <div className="flex-1 overflow-hidden px-4 py-4 lg:px-6 lg:pb-6">
-          <div className="grid h-full gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid h-full gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <section className="min-h-0 overflow-hidden">
-              <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                <div className="mb-6 grid gap-4 shrink-0 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Focus mode</p>
-                    <p className="mt-1.5 text-sm font-bold text-slate-900">Assessment shell active</p>
+              <div className="surface-panel flex h-full flex-col rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+                <div className="mb-4 grid gap-3 shrink-0 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Focus mode</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">Assessment shell active</p>
                     <p className="mt-1 text-sm leading-relaxed text-slate-600">
                       Minimal chrome, fullscreen prompt, and persistent timing controls.
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">AI status</p>
-                    <p className="mt-1.5 text-sm font-bold text-slate-900">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">AI status</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
                       {avatarState.ai === "thinking" ? "Analyzing response" : "Listening live"}
                     </p>
                     <p className="mt-1 text-sm leading-relaxed text-slate-600">
@@ -2562,9 +2580,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                         : "Your reasoning is being evaluated continuously as you speak."}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Response mode</p>
-                    <p className="mt-1.5 text-sm font-bold text-slate-900">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Response mode</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
                       {question.kind === "satellite" || question.kind === "differentiability"
                         ? "Voice + interaction"
                         : "Voice response"}
@@ -2593,11 +2611,11 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 </div>
 
                 {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
-                  <div className="mt-6 shrink-0 border-t border-slate-100 pt-6">
+                  <div className="mt-5 shrink-0 border-t border-slate-200 pt-5">
                     <button
                       type="button"
                       onClick={() => navigateToNext()}
-                      className="btn-primary flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors"
+                      className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold"
                     >
                       Submit and continue
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2608,7 +2626,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 )}
 
                 {!frozen && activeQuestionIdx >= QUESTIONS.length - 1 && (
-                  <div className="mt-6 shrink-0 border-t border-slate-100 pt-6">
+                  <div className="mt-5 shrink-0 border-t border-slate-200 pt-5">
                     <button
                       type="button"
                       onClick={async () => {
@@ -2635,7 +2653,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                         publishFinish(payload);
                         setIsFinished(true);
                       }}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
                     >
                       Finish interview
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2651,12 +2669,12 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
             <aside className="min-h-0 overflow-hidden">
               <div className="grid h-full gap-5 xl:grid-rows-[auto_auto_minmax(0,1fr)]">
                 <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
                     <div className="flex items-center gap-4">
                       <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
                       <div>
-                        <p className="text-sm font-bold text-slate-900">{name}</p>
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                        <p className="text-sm font-semibold text-slate-900">{name}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                           Candidate channel
                         </p>
                         <p className="mt-2 text-sm text-slate-600">
@@ -2666,12 +2684,12 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="surface-panel rounded-2xl p-5 shadow-sm border border-slate-200">
                     <div className="flex items-center gap-4">
                       <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
                       <div>
-                        <p className="text-sm font-bold text-slate-900">AESTR Interviewer</p>
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                        <p className="text-sm font-semibold text-slate-900">AESTR Interviewer</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                           Evaluation channel
                         </p>
                         <p className="mt-2 text-sm text-slate-600">
@@ -2682,36 +2700,35 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                   </div>
                 </div>
 
-                <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm overflow-hidden">
-                  <div className="shrink-0 mb-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Analysis state</p>
-                    <p className="mt-1 text-sm font-bold text-slate-900">
-                      {ended
-                        ? "Finalizing evaluation"
-                        : avatarState.ai === "thinking"
-                          ? "Analyzing response"
-                          : "Monitoring live answer"}
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                      {ended
-                        ? "Your session has ended and the platform is packaging your final submission."
-                        : avatarState.ai === "thinking"
-                          ? "The interviewer is processing your latest response before continuing."
-                          : "Stay concise and speak clearly while the interviewer listens."}
-                    </p>
-                  </div>
-                  <div className="h-px w-full bg-slate-100 shrink-0 my-3" />
-                  <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-                    <div className="flex items-center justify-between mb-3 shrink-0">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Transcript</p>
-                      </div>
-                      <div className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                        {transcript.length} entries
-                      </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Analysis state</p>
+                  <p className="mt-2 text-base font-semibold text-slate-900">
+                    {ended
+                      ? "Finalizing evaluation"
+                      : avatarState.ai === "thinking"
+                        ? "Analyzing response"
+                        : "Monitoring live answer"}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                    {ended
+                      ? "Your session has ended and the platform is packaging your final submission."
+                      : avatarState.ai === "thinking"
+                        ? "The interviewer is processing your latest response before continuing."
+                        : "Stay concise and speak clearly while the interviewer listens."}
+                  </p>
+                </div>
+
+                <div className="surface-panel flex min-h-0 flex-col overflow-hidden rounded-2xl shadow-sm border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/50">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
+                      <p className="mt-0.5 text-sm font-medium text-slate-700">Live conversation log</p>
                     </div>
-                    <AssessmentTranscriptView entries={transcript} />
+                    <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
+                      {transcript.length} entries
+                    </div>
                   </div>
+                  <AssessmentTranscriptView entries={transcript} />
                 </div>
               </div>
             </aside>
