@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS interview_question_scores (
   part                    INTEGER NOT NULL DEFAULT 0,
   question_key            TEXT NOT NULL,
   status                  TEXT NOT NULL DEFAULT 'pending'
-                          CHECK (status IN ('pending','artifact_ready','scored','final','insufficient_data')),
+                          CHECK (status IN ('pending','artifact_ready','transcribed','scored','final','insufficient_data')),
 
   academic_correctness    NUMERIC(4,2),
   academic_understanding  NUMERIC(4,2),
@@ -109,8 +109,18 @@ CREATE TABLE IF NOT EXISTS interview_question_scores (
 
   created_at              TIMESTAMPTZ DEFAULT NOW(),
   updated_at              TIMESTAMPTZ DEFAULT NOW(),
-  scored_at               TIMESTAMPTZ
+  artifact_ready_at       TIMESTAMPTZ,
+  transcribed_at          TIMESTAMPTZ,
+  scored_at               TIMESTAMPTZ,
+  finalized_at            TIMESTAMPTZ
 );
+
+ALTER TABLE interview_question_scores
+  ADD COLUMN IF NOT EXISTS artifact_ready_at TIMESTAMPTZ;
+ALTER TABLE interview_question_scores
+  ADD COLUMN IF NOT EXISTS transcribed_at TIMESTAMPTZ;
+ALTER TABLE interview_question_scores
+  ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_evaluations_student ON evaluations(student_id);
 CREATE INDEX IF NOT EXISTS idx_interview_attempts_student ON interview_attempts(student_id);

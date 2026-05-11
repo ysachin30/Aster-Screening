@@ -73,9 +73,16 @@ function deriveRollups(
 }
 
 function deriveQuestionScore(academic: { correctness?: number | null; understanding?: number | null; reasoning_depth?: number | null }) {
-  const correctness = clamp010(Number(academic.correctness ?? 0));
-  const understanding = clamp010(Number(academic.understanding ?? 0));
-  const reasoning_depth = clamp010(Number(academic.reasoning_depth ?? 0));
+  if (
+    academic.correctness === null || academic.correctness === undefined ||
+    academic.understanding === null || academic.understanding === undefined ||
+    academic.reasoning_depth === null || academic.reasoning_depth === undefined
+  ) {
+    return null;
+  }
+  const correctness = clamp010(Number(academic.correctness));
+  const understanding = clamp010(Number(academic.understanding));
+  const reasoning_depth = clamp010(Number(academic.reasoning_depth));
   return (correctness * 0.35 + understanding * 0.4 + reasoning_depth * 0.25) * 10;
 }
 
@@ -104,20 +111,69 @@ function average(nums: number[]) {
   return nums.reduce((sum, n) => sum + n, 0) / nums.length;
 }
 
+function isRollupEligibleQuestionRow(row: any) {
+  return row && (row.status === "scored" || row.status === "final");
+}
+
+function rowEvidenceWeight(row: any) {
+  if (!isRollupEligibleQuestionRow(row)) return 0;
+  return row.needs_review ? 0.35 : 1;
+}
+
+function weightedAverage(values: Array<{ value: number; weight: number }>) {
+  const usable = values.filter(({ value, weight }) => Number.isFinite(value) && weight > 0);
+  if (!usable.length) return null;
+  const totalWeight = usable.reduce((sum, item) => sum + item.weight, 0);
+  if (totalWeight <= 0) return null;
+  return usable.reduce((sum, item) => sum + item.value * item.weight, 0) / totalWeight;
+}
+
 function deriveAcademicFromQuestionRows(rows: any[]) {
-  const correctness = average(rows.filter((r) => r.academic_correctness !== null).map((r) => Number(r.academic_correctness)));
-  const understanding = average(rows.filter((r) => r.academic_understanding !== null).map((r) => Number(r.academic_understanding)));
-  const reasoning_depth = average(rows.filter((r) => r.academic_reasoning !== null).map((r) => Number(r.academic_reasoning)));
+  const correctness = weightedAverage(
+    rows
+      .filter((r) => r.academic_correctness !== null)
+      .map((r) => ({ value: Number(r.academic_correctness), weight: rowEvidenceWeight(r) })),
+  );
+  const understanding = weightedAverage(
+    rows
+      .filter((r) => r.academic_understanding !== null)
+      .map((r) => ({ value: Number(r.academic_understanding), weight: rowEvidenceWeight(r) })),
+  );
+  const reasoning_depth = weightedAverage(
+    rows
+      .filter((r) => r.academic_reasoning !== null)
+      .map((r) => ({ value: Number(r.academic_reasoning), weight: rowEvidenceWeight(r) })),
+  );
   if (correctness === null || understanding === null || reasoning_depth === null) return null;
   return { correctness, understanding, reasoning_depth };
 }
 
 function derivePersonalityFromQuestionRows(rows: any[]) {
-  const confidence = average(rows.filter((r) => r.confidence_score !== null).map((r) => Number(r.confidence_score)));
-  const communication = average(rows.filter((r) => r.communication_score !== null).map((r) => Number(r.communication_score)));
-  const curiosity = average(rows.filter((r) => r.curiosity_score !== null).map((r) => Number(r.curiosity_score)));
-  const exploratory_thinking = average(rows.filter((r) => r.exploratory_score !== null).map((r) => Number(r.exploratory_score)));
-  const comprehension = average(rows.filter((r) => r.comprehension_score !== null).map((r) => Number(r.comprehension_score)));
+  const confidence = weightedAverage(
+    rows
+      .filter((r) => r.confidence_score !== null)
+      .map((r) => ({ value: Number(r.confidence_score), weight: rowEvidenceWeight(r) })),
+  );
+  const communication = weightedAverage(
+    rows
+      .filter((r) => r.communication_score !== null)
+      .map((r) => ({ value: Number(r.communication_score), weight: rowEvidenceWeight(r) })),
+  );
+  const curiosity = weightedAverage(
+    rows
+      .filter((r) => r.curiosity_score !== null)
+      .map((r) => ({ value: Number(r.curiosity_score), weight: rowEvidenceWeight(r) })),
+  );
+  const exploratory_thinking = weightedAverage(
+    rows
+      .filter((r) => r.exploratory_score !== null)
+      .map((r) => ({ value: Number(r.exploratory_score), weight: rowEvidenceWeight(r) })),
+  );
+  const comprehension = weightedAverage(
+    rows
+      .filter((r) => r.comprehension_score !== null)
+      .map((r) => ({ value: Number(r.comprehension_score), weight: rowEvidenceWeight(r) })),
+  );
   if (
     confidence === null ||
     communication === null ||
@@ -162,7 +218,10 @@ function mapQuestionScoreRow(row: any, includeAudio = false) {
     audio_mime_type: row.audio_mime_type,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    artifact_ready_at: row.artifact_ready_at,
+    transcribed_at: row.transcribed_at,
     scored_at: row.scored_at,
+    finalized_at: row.finalized_at,
   };
   return includeAudio ? { ...mapped, audio_base64: row.audio_base64 } : mapped;
 }
@@ -227,7 +286,7 @@ const UpsertQuestionScoreBody = z.object({
   question_id: z.coerce.number().int().positive(),
   part: z.coerce.number().int().nonnegative().optional(),
   question_key: z.string().min(1).optional(),
-  status: z.enum(["pending", "artifact_ready", "scored", "final", "insufficient_data"]).optional(),
+  status: z.enum(["pending", "artifact_ready", "transcribed", "scored", "final", "insufficient_data"]).optional(),
   academic: PartialAcademicSchema.optional(),
   personality_snapshot: PartialPersonalitySchema.optional(),
   question_score: z.coerce.number().optional(),
@@ -268,9 +327,12 @@ reportRouter.post("/question-score", async (req, res) => {
 
   const normalizedPart = part ?? 0;
   const effectiveQuestionKey = question_key || `Q${question_id}${normalizedPart > 0 ? `-P${normalizedPart}` : ""}`;
+  const normalizedStatus = status ?? "pending";
+  const isScoredStatus = normalizedStatus === "scored" || normalizedStatus === "final";
   const computedQuestionScore =
-    question_score ??
-    (academic ? deriveQuestionScore(academic) : undefined);
+    isScoredStatus
+      ? (question_score ?? (academic ? deriveQuestionScore(academic) : undefined))
+      : undefined;
 
   try {
     await pool.query(
@@ -284,21 +346,35 @@ reportRouter.post("/question-score", async (req, res) => {
         academic_correctness, academic_understanding, academic_reasoning, question_score,
         confidence_score, communication_score, curiosity_score, exploratory_score, comprehension_score,
         grading_mode, transcript_confidence, needs_review, summary, transcript_excerpt,
-        activity_json, audio_mime_type, audio_base64, scored_at, updated_at
+        activity_json, audio_mime_type, audio_base64,
+        artifact_ready_at, transcribed_at, scored_at, finalized_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, $9, $10, $11,
         $12, $13, $14, $15, $16,
         $17, $18, $19, $20, $21,
         $22::jsonb, $23, $24,
+        CASE WHEN $7 IN ('artifact_ready','transcribed','scored','final','insufficient_data') THEN NOW() ELSE NULL END,
+        CASE WHEN $7 IN ('transcribed','scored','final') THEN NOW() ELSE NULL END,
         CASE WHEN $7 IN ('scored','final','insufficient_data') THEN NOW() ELSE NULL END,
+        CASE WHEN $7 = 'final' THEN NOW() ELSE NULL END,
         NOW()
       )
       ON CONFLICT (room, question_id, part) DO UPDATE SET
         report_id = COALESCE(EXCLUDED.report_id, interview_question_scores.report_id),
         student_id = EXCLUDED.student_id,
         question_key = COALESCE(EXCLUDED.question_key, interview_question_scores.question_key),
-        status = COALESCE(EXCLUDED.status, interview_question_scores.status),
+        status = CASE
+          WHEN EXCLUDED.status = 'final' THEN 'final'
+          WHEN interview_question_scores.status = 'final' THEN 'final'
+          WHEN EXCLUDED.status = 'scored' THEN 'scored'
+          WHEN interview_question_scores.status = 'scored' AND EXCLUDED.status IN ('pending','artifact_ready','transcribed') THEN interview_question_scores.status
+          WHEN EXCLUDED.status = 'insufficient_data' AND interview_question_scores.status IN ('pending','artifact_ready','transcribed','insufficient_data') THEN 'insufficient_data'
+          WHEN interview_question_scores.status = 'insufficient_data' AND EXCLUDED.status IN ('pending','artifact_ready','transcribed') THEN interview_question_scores.status
+          WHEN EXCLUDED.status = 'transcribed' AND interview_question_scores.status IN ('pending','artifact_ready','transcribed') THEN 'transcribed'
+          WHEN EXCLUDED.status = 'artifact_ready' AND interview_question_scores.status = 'pending' THEN 'artifact_ready'
+          ELSE interview_question_scores.status
+        END,
         academic_correctness = COALESCE(EXCLUDED.academic_correctness, interview_question_scores.academic_correctness),
         academic_understanding = COALESCE(EXCLUDED.academic_understanding, interview_question_scores.academic_understanding),
         academic_reasoning = COALESCE(EXCLUDED.academic_reasoning, interview_question_scores.academic_reasoning),
@@ -316,13 +392,13 @@ reportRouter.post("/question-score", async (req, res) => {
         activity_json = COALESCE(EXCLUDED.activity_json, interview_question_scores.activity_json),
         audio_mime_type = COALESCE(EXCLUDED.audio_mime_type, interview_question_scores.audio_mime_type),
         audio_base64 = COALESCE(EXCLUDED.audio_base64, interview_question_scores.audio_base64),
+        artifact_ready_at = COALESCE(interview_question_scores.artifact_ready_at, EXCLUDED.artifact_ready_at),
+        transcribed_at = COALESCE(interview_question_scores.transcribed_at, EXCLUDED.transcribed_at),
         scored_at = COALESCE(
-          EXCLUDED.scored_at,
-          CASE
-            WHEN EXCLUDED.status IN ('scored','final','insufficient_data') THEN NOW()
-            ELSE interview_question_scores.scored_at
-          END
+          interview_question_scores.scored_at,
+          EXCLUDED.scored_at
         ),
+        finalized_at = COALESCE(interview_question_scores.finalized_at, EXCLUDED.finalized_at),
         updated_at = NOW()
       RETURNING *`,
       [
@@ -332,7 +408,7 @@ reportRouter.post("/question-score", async (req, res) => {
         question_id,
         normalizedPart,
         effectiveQuestionKey,
-        status ?? "pending",
+        normalizedStatus,
         academic?.correctness ?? null,
         academic?.understanding ?? null,
         academic?.reasoning_depth ?? null,
@@ -394,13 +470,17 @@ reportRouter.post("/report", async (req, res) => {
     const questionBreakdown = questionRows.map((row) => mapQuestionScoreRow(row));
     const fallbackAcademic = deriveAcademicFromQuestionRows(questionRows);
     const fallbackPersonality = derivePersonalityFromQuestionRows(questionRows);
-    const useAcademicFallback = !hasAcademicSignal(academic) && fallbackAcademic !== null;
+    const useAcademicFallback = fallbackAcademic !== null;
     const usePersonalityFallback = !hasPersonalitySignal(personality) && fallbackPersonality !== null;
     const effectiveAcademic = useAcademicFallback ? fallbackAcademic : academic;
     const effectivePersonality = usePersonalityFallback ? fallbackPersonality : personality;
     const roll = deriveRollups(effectiveAcademic, effectivePersonality);
     const strengthsArr = strengths?.slice(0, 10) ?? [];
     const improvementsArr = improvements?.slice(0, 10) ?? [];
+    const statusCounts = questionBreakdown.reduce<Record<string, number>>((acc, item) => {
+      acc[item.status] = (acc[item.status] ?? 0) + 1;
+      return acc;
+    }, {});
 
     const mergedReportJson = {
       academic: effectiveAcademic,
@@ -413,6 +493,14 @@ reportRouter.post("/report", async (req, res) => {
         used_live_question_academic_fallback: useAcademicFallback,
         used_live_question_personality_fallback: usePersonalityFallback,
         review_needed_count: questionBreakdown.filter((item) => item.needs_review).length,
+        insufficient_data_count: statusCounts.insufficient_data ?? 0,
+        transcribed_count: statusCounts.transcribed ?? 0,
+        scored_count: (statusCounts.scored ?? 0) + (statusCounts.final ?? 0),
+        artifact_ready_count: statusCounts.artifact_ready ?? 0,
+        rollup_sources: {
+          academic: useAcademicFallback ? "question_scores" : "full_interview_grade",
+          personality: usePersonalityFallback ? "question_scores" : "full_interview_grade",
+        },
       },
       server: {
         academic_score: roll.academic_score,
