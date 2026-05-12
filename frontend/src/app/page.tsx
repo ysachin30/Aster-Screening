@@ -13,19 +13,48 @@ export default function Home() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [sequence, setSequence] = useState<number>(ASSESSMENT_SEQUENCE_START);
+  const [sequenceReady, setSequenceReady] = useState(false);
+  const [sequenceError, setSequenceError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    setSequence(reserveAssessmentSequence());
+    let cancelled = false;
+    void reserveAssessmentSequence()
+      .then((reservedSequence) => {
+        if (cancelled) return;
+        setSequence(reservedSequence);
+        setSequenceReady(true);
+        setSequenceError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn("[assessment-sequence]", err);
+        setSequenceReady(false);
+        setSequenceError("Unable to allocate a candidate sequence right now.");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const start = () => {
-    if (!studentId.trim() || !name.trim()) return;
+  const start = async () => {
+    if (!studentId.trim() || !name.trim() || loading) return;
     setLoading(true);
-    const room = `interview-${studentId}-${Date.now()}`;
-    router.push(
-      `/interview?room=${room}&name=${encodeURIComponent(name)}&sid=${studentId}&seq=${sequence}`,
-    );
+    try {
+      const reservedSequence = await reserveAssessmentSequence();
+      setSequence(reservedSequence);
+      setSequenceReady(true);
+      setSequenceError(null);
+      const room = `interview-${studentId}-${Date.now()}`;
+      router.push(
+        `/interview?room=${room}&name=${encodeURIComponent(name)}&sid=${studentId}&seq=${reservedSequence}`,
+      );
+    } catch (err) {
+      console.warn("[assessment-sequence]", err);
+      setSequenceReady(false);
+      setSequenceError("Unable to allocate a candidate sequence right now.");
+      setLoading(false);
+    }
   };
 
   const ready = studentId.trim().length > 0 && name.trim().length > 0;
@@ -90,7 +119,9 @@ export default function Home() {
                   <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">
                     Sequence
                   </p>
-                  <p className="mt-0.5 text-lg font-semibold text-slate-700">#{sequence}</p>
+                  <p className="mt-0.5 text-lg font-semibold text-slate-700">
+                    {sequenceReady ? `#${sequence}` : "Allocating..."}
+                  </p>
                 </div>
               </div>
 
@@ -125,9 +156,9 @@ export default function Home() {
 
               <button
                 onClick={start}
-                disabled={!ready || loading}
+                disabled={!ready || loading || !sequenceReady}
                 className={`mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold transition-all ${
-                  ready && !loading
+                  ready && !loading && sequenceReady
                     ? "btn-primary"
                     : "cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
                 }`}
@@ -155,6 +186,10 @@ export default function Home() {
                   "Begin Interview"
                 )}
               </button>
+
+              {sequenceError ? (
+                <p className="mt-3 text-center text-xs font-medium text-amber-700">{sequenceError}</p>
+              ) : null}
 
               <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">
                 By continuing, you confirm that your microphone is available and you are ready to complete a monitored interview.

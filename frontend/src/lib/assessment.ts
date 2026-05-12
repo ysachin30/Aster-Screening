@@ -1,35 +1,37 @@
 export const ASSESSMENT_SEQUENCE_START = 2793;
 
-const ASSESSMENT_SEQUENCE_STORAGE_KEY = "aestr-sequence-counter";
 const ASSESSMENT_SEQUENCE_SESSION_KEY = "aestr-current-sequence";
-const ASSESSMENT_SEQUENCE_SEED = ASSESSMENT_SEQUENCE_START - 1;
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
-export function reserveAssessmentSequence() {
-  if (typeof window === "undefined") return ASSESSMENT_SEQUENCE_START;
+function readStoredAssessmentSequence() {
+  if (typeof window === "undefined") return null;
+  const reserved = Number(window.sessionStorage.getItem(ASSESSMENT_SEQUENCE_SESSION_KEY));
+  return Number.isFinite(reserved) && reserved >= ASSESSMENT_SEQUENCE_START ? reserved : null;
+}
 
-  const reserved = window.sessionStorage.getItem(ASSESSMENT_SEQUENCE_SESSION_KEY);
-  const reservedValue = Number(reserved);
-  if (Number.isFinite(reservedValue) && reservedValue >= ASSESSMENT_SEQUENCE_START) {
-    return reservedValue;
+export async function reserveAssessmentSequence() {
+  const stored = readStoredAssessmentSequence();
+  if (stored !== null) {
+    return stored;
   }
 
-  const last = Number(window.localStorage.getItem(ASSESSMENT_SEQUENCE_STORAGE_KEY));
-  const next = Number.isFinite(last)
-    ? Math.max(last, ASSESSMENT_SEQUENCE_SEED) + 1
-    : ASSESSMENT_SEQUENCE_START;
+  if (typeof window === "undefined") return ASSESSMENT_SEQUENCE_START;
 
-  window.localStorage.setItem(ASSESSMENT_SEQUENCE_STORAGE_KEY, String(next));
-  window.sessionStorage.setItem(ASSESSMENT_SEQUENCE_SESSION_KEY, String(next));
-  return next;
+  const response = await fetch(`${BACKEND}/api/assessment-sequence/reserve`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error("Unable to reserve assessment sequence.");
+  }
+  const data = await response.json();
+  const sequence = Number(data?.sequence);
+  if (!Number.isFinite(sequence) || sequence < ASSESSMENT_SEQUENCE_START) {
+    throw new Error("Invalid assessment sequence received.");
+  }
+  window.sessionStorage.setItem(ASSESSMENT_SEQUENCE_SESSION_KEY, String(sequence));
+  return sequence;
 }
 
 export function getStoredAssessmentSequence() {
-  if (typeof window === "undefined") return ASSESSMENT_SEQUENCE_START;
-
-  const reserved = Number(window.sessionStorage.getItem(ASSESSMENT_SEQUENCE_SESSION_KEY));
-  if (Number.isFinite(reserved) && reserved >= ASSESSMENT_SEQUENCE_START) {
-    return reserved;
-  }
-
-  return reserveAssessmentSequence();
+  return readStoredAssessmentSequence();
 }

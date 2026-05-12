@@ -11,7 +11,7 @@ import {
 } from "@livekit/components-react";
 import { ConnectionState, Track, LocalVideoTrack } from "livekit-client";
 import Timer from "../../components/Timer";
-import { getStoredAssessmentSequence } from "@/lib/assessment";
+import { getStoredAssessmentSequence, reserveAssessmentSequence } from "@/lib/assessment";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
@@ -1832,7 +1832,26 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }, [question.id]);
 
   useEffect(() => {
-    setCandidateSequence(initialCandidateSequence ?? getStoredAssessmentSequence());
+    let cancelled = false;
+    if (initialCandidateSequence && Number.isFinite(initialCandidateSequence) && initialCandidateSequence > 0) {
+      setCandidateSequence(initialCandidateSequence);
+      return undefined;
+    }
+    const stored = getStoredAssessmentSequence();
+    if (stored !== null) {
+      setCandidateSequence(stored);
+      return undefined;
+    }
+    void reserveAssessmentSequence()
+      .then((sequence) => {
+        if (!cancelled) setCandidateSequence(sequence);
+      })
+      .catch((err) => {
+        console.warn("[assessment-sequence]", err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [initialCandidateSequence]);
 
   useEffect(() => {
