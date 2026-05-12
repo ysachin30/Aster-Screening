@@ -392,6 +392,7 @@ async def entrypoint(ctx: JobContext):
     last_answer_guardrail_at: dict[str, float] = {"value": 0.0}
     inflight_question_event_ids: set[str] = set()
     pending_segment_finalize_tasks: set[asyncio.Task] = set()
+    finalize_request_reason: dict[str, str | None] = {"value": None}
 
     def _line_prefix() -> str:
         qid = active_q.get("qid")
@@ -719,55 +720,58 @@ async def entrypoint(ctx: JobContext):
 
         logger.info("Finalizing interview (%s)", reason)
         try:
-            await session.aclose()
+            try:
+                await session.aclose()
+            except Exception as e:
+                logger.warning("session close during finalize raised: %s", e)
+
+            duration_secs = int(time.time() - session_started_at)
+            started_iso = datetime.fromtimestamp(session_started_at, tz=timezone.utc).isoformat()
+            completed_iso = datetime.now(timezone.utc).isoformat()
+
+            transcript = "\n".join(transcript_lines)
+            logger.info("--- TRANSCRIPT (%d lines) ---", len(transcript_lines))
+            for line in transcript_lines:
+                logger.info("  %s", line)
+
+            if pending_segment_finalize_tasks:
+                logger.info("Waiting for %d background segment finalize task(s)", len(pending_segment_finalize_tasks))
+                await asyncio.gather(*list(pending_segment_finalize_tasks), return_exceptions=True)
+            await _finalize_question_segment(current_segment_key["value"], reason)
+            graded = await _grade(transcript, google_key)
+            live_aggregate = _aggregate_question_snapshots(list(question_scores.values()))
+
+            question_status_counts: dict[str, int] = {}
+            for item in question_scores.values():
+                status = str(item.get("status") or "pending")
+                question_status_counts[status] = question_status_counts.get(status, 0) + 1
+
+            capture_guardrails = {
+                "used_live_question_academic_fallback": False,
+                "used_live_question_personality_fallback": False,
+                "question_scores_count": len(question_scores),
+                "review_needed_count": sum(1 for item in question_scores.values() if item.get("needs_review")),
+                "status_counts": question_status_counts,
+            }
+            report_json = {
+                "question_scores": list(question_scores.values()),
+                "capture_guardrails": capture_guardrails,
+                "full_transcript_grade": graded,
+                "question_aggregate_grade": live_aggregate,
+            }
+
+            await _post_report(
+                student_id=student_identity,
+                room=ctx.room.name,
+                transcript_full=transcript,
+                graded=graded,
+                started_at=started_iso,
+                completed_at=completed_iso,
+                duration_secs=duration_secs,
+                report_json=report_json,
+            )
         except Exception as e:
-            logger.warning("session close during finalize raised: %s", e)
-
-        duration_secs = int(time.time() - session_started_at)
-        started_iso = datetime.fromtimestamp(session_started_at, tz=timezone.utc).isoformat()
-        completed_iso = datetime.now(timezone.utc).isoformat()
-
-        transcript = "\n".join(transcript_lines)
-        logger.info("--- TRANSCRIPT (%d lines) ---", len(transcript_lines))
-        for line in transcript_lines:
-            logger.info("  %s", line)
-
-        if pending_segment_finalize_tasks:
-            logger.info("Waiting for %d background segment finalize task(s)", len(pending_segment_finalize_tasks))
-            await asyncio.gather(*list(pending_segment_finalize_tasks), return_exceptions=True)
-        await _finalize_question_segment(current_segment_key["value"], reason)
-        graded = await _grade(transcript, google_key)
-        live_aggregate = _aggregate_question_snapshots(list(question_scores.values()))
-
-        question_status_counts: dict[str, int] = {}
-        for item in question_scores.values():
-            status = str(item.get("status") or "pending")
-            question_status_counts[status] = question_status_counts.get(status, 0) + 1
-
-        capture_guardrails = {
-            "used_live_question_academic_fallback": False,
-            "used_live_question_personality_fallback": False,
-            "question_scores_count": len(question_scores),
-            "review_needed_count": sum(1 for item in question_scores.values() if item.get("needs_review")),
-            "status_counts": question_status_counts,
-        }
-        report_json = {
-            "question_scores": list(question_scores.values()),
-            "capture_guardrails": capture_guardrails,
-            "full_transcript_grade": graded,
-            "question_aggregate_grade": live_aggregate,
-        }
-
-        await _post_report(
-            student_id=student_identity,
-            room=ctx.room.name,
-            transcript_full=transcript,
-            graded=graded,
-            started_at=started_iso,
-            completed_at=completed_iso,
-            duration_secs=duration_secs,
-            report_json=report_json,
-        )
+            logger.exception("finalize_and_post failed (%s): %s", reason, e)
 
     @session.on("user_speech_committed")
     def on_user_speech(ev) -> None:
@@ -945,13 +949,13 @@ async def entrypoint(ctx: JobContext):
         try:
             if finish:
                 interview_finished["value"] = True
+                finalize_request_reason["value"] = "finish_signal"
                 stop_event.set()
                 notice = "The student has finished the interview. Immediately say: 'Thank you. We will get back to you soon.'"
                 try:
                     session.generate_reply(instructions=notice)
                 except Exception as e:
                     logger.warning("Could not inject finish notice: %s", e)
-                asyncio.create_task(_finalize_and_post("finish_signal"))
                 return
 
             next_segment_key = _segment_key(qid, part_num)
@@ -1088,9 +1092,9 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(*args, **kwargs) -> None:
         logger.info("participant_disconnected event received — finalizing")
-        stop_event.set()
         def _schedule_finalize() -> None:
-            asyncio.create_task(_finalize_and_post("participant_disconnected"))
+            finalize_request_reason["value"] = "participant_disconnected"
+            stop_event.set()
         try:
             loop.call_soon_threadsafe(_schedule_finalize)
         except Exception:
@@ -1113,7 +1117,8 @@ async def entrypoint(ctx: JobContext):
 
     try:
         await asyncio.wait_for(stop_event.wait(), timeout=INTERVIEW_SECONDS)
-        logger.info("Stop event set before timeout — waiting for finalize task")
+        logger.info("Stop event set before timeout — finalizing before exit")
+        await asyncio.shield(_finalize_and_post(finalize_request_reason["value"] or "stop_event"))
     except asyncio.TimeoutError:
         logger.info("✓ Timer elapsed — finalizing session")
         await _finalize_and_post("timer_elapsed")
@@ -1123,7 +1128,7 @@ async def entrypoint(ctx: JobContext):
         raise
     finally:
         if not finalized["value"]:
-            await _finalize_and_post("entrypoint_finally")
+            await asyncio.shield(_finalize_and_post(finalize_request_reason["value"] or "entrypoint_finally"))
 
 
 def _gemini_response_text(resp: object) -> str:
@@ -2143,13 +2148,21 @@ async def _post_report(
         "duration_secs": duration_secs,
         "report_json": report_json or {},
     }
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(f"{BACKEND_URL}/api/report", json=payload)
-            r.raise_for_status()
-            logger.info("✓ Interview report posted for %s", student_id)
-    except Exception as e:
-        logger.exception("failed to post interview report: %s", e)
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post(f"{BACKEND_URL}/api/report", json=payload)
+                r.raise_for_status()
+                logger.info("✓ Interview report posted for %s (attempt %d)", student_id, attempt)
+                return
+        except Exception as e:
+            last_exc = e
+            if attempt < 3:
+                logger.warning("report post attempt %d failed for %s: %s", attempt, student_id, e)
+                await asyncio.sleep(1.0 * attempt)
+            else:
+                logger.exception("failed to post interview report after %d attempts: %s", attempt, e)
 
 
 if __name__ == "__main__":
