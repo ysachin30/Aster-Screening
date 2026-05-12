@@ -147,10 +147,10 @@ ACADEMIC (0-10 each):
 - reasoning_depth: Step-by-step reasoning, justification, response to follow-ups.
 
 PERSONALITY / NON-ACADEMIC (0-10 each):
-- confidence: Defends choices, recovers from pushback.
-- communication: Clarity, English fluency, structure.
-- curiosity: Asks questions, explores ideas.
-- exploratory_thinking: Tries multiple angles, revises when challenged.
+- confidence: Composure, willingness to answer, and steadiness under questioning. Do not punish brief but sure answers.
+- communication: Clarity, English fluency, and structure. Do not over-penalize accent or concise phrasing.
+- curiosity: Engagement with the problem and openness to reasoning. Do not require the student to ask their own questions.
+- exploratory_thinking: Tries useful angles or demonstrates flexible thinking when needed. Do not punish concise correct answers for not over-explaining.
 - comprehension: Listens and responds to the interviewer's intent.
 
 Return ONLY valid minified JSON with this exact shape:
@@ -709,14 +709,6 @@ async def entrypoint(ctx: JobContext):
         await _finalize_question_segment(current_segment_key["value"], reason)
         graded = await _grade(transcript, google_key)
         live_aggregate = _aggregate_question_snapshots(list(question_scores.values()))
-        used_live_academic = False
-        used_live_personality = False
-        if live_aggregate.get("academic"):
-            graded["academic"] = live_aggregate["academic"]
-            used_live_academic = True
-        if live_aggregate.get("personality"):
-            graded["personality"] = live_aggregate["personality"]
-            used_live_personality = True
 
         question_status_counts: dict[str, int] = {}
         for item in question_scores.values():
@@ -724,8 +716,8 @@ async def entrypoint(ctx: JobContext):
             question_status_counts[status] = question_status_counts.get(status, 0) + 1
 
         capture_guardrails = {
-            "used_live_question_academic_fallback": used_live_academic,
-            "used_live_question_personality_fallback": used_live_personality,
+            "used_live_question_academic_fallback": False,
+            "used_live_question_personality_fallback": False,
             "question_scores_count": len(question_scores),
             "review_needed_count": sum(1 for item in question_scores.values() if item.get("needs_review")),
             "status_counts": question_status_counts,
@@ -734,6 +726,7 @@ async def entrypoint(ctx: JobContext):
             "question_scores": list(question_scores.values()),
             "capture_guardrails": capture_guardrails,
             "full_transcript_grade": graded,
+            "question_aggregate_grade": live_aggregate,
         }
 
         await _post_report(
@@ -1223,6 +1216,19 @@ def _metric_float(bucket: dict, *keys: str, default: float = 0.0) -> float:
     return default
 
 
+def _metric_optional(bucket: dict, *keys: str) -> float | None:
+    return _metric_float(bucket, *keys, default=None)
+
+
+def _compact_metric_bucket(bucket: dict[str, float | None]) -> dict[str, float]:
+    compact: dict[str, float] = {}
+    for key, value in bucket.items():
+        if value is None:
+            continue
+        compact[key] = round(float(value), 2)
+    return compact
+
+
 def _normalize_grade_payload(data: dict) -> dict:
     if not isinstance(data, dict):
         data = {}
@@ -1244,26 +1250,30 @@ def _normalize_grade_payload(data: dict) -> dict:
     improvements = root.get("improvements") if isinstance(root.get("improvements"), list) else []
 
     return {
-        "academic": {
-            "correctness": _metric_float(ac, "correctness", "Correctness"),
-            "understanding": _metric_float(ac, "understanding", "Understanding"),
-            "reasoning_depth": _metric_float(
-                ac, "reasoning_depth", "reasoningDepth", "reasoning", "ReasoningDepth"
-            ),
-        },
-        "personality": {
-            "confidence": _metric_float(pe, "confidence", "Confidence"),
-            "communication": _metric_float(pe, "communication", "Communication"),
-            "curiosity": _metric_float(pe, "curiosity", "Curiosity"),
-            "exploratory_thinking": _metric_float(
-                pe,
-                "exploratory_thinking",
-                "exploratoryThinking",
-                "exploratory",
-                "ExploratoryThinking",
-            ),
-            "comprehension": _metric_float(pe, "comprehension", "Comprehension"),
-        },
+        "academic": _compact_metric_bucket(
+            {
+                "correctness": _metric_optional(ac, "correctness", "Correctness"),
+                "understanding": _metric_optional(ac, "understanding", "Understanding"),
+                "reasoning_depth": _metric_optional(
+                    ac, "reasoning_depth", "reasoningDepth", "reasoning", "ReasoningDepth"
+                ),
+            }
+        ),
+        "personality": _compact_metric_bucket(
+            {
+                "confidence": _metric_optional(pe, "confidence", "Confidence"),
+                "communication": _metric_optional(pe, "communication", "Communication"),
+                "curiosity": _metric_optional(pe, "curiosity", "Curiosity"),
+                "exploratory_thinking": _metric_optional(
+                    pe,
+                    "exploratory_thinking",
+                    "exploratoryThinking",
+                    "exploratory",
+                    "ExploratoryThinking",
+                ),
+                "comprehension": _metric_optional(pe, "comprehension", "Comprehension"),
+            }
+        ),
         "summary": str(root.get("summary", "") or ""),
         "strengths": [str(x) for x in strengths][:3],
         "improvements": [str(x) for x in improvements][:3],
@@ -1298,10 +1308,10 @@ def _insufficient_segment_result(summary: str) -> dict:
 def _derive_question_score_value(academic: dict | None) -> float | None:
     if not isinstance(academic, dict):
         return None
-    correctness = _metric_float(academic, "correctness")
-    understanding = _metric_float(academic, "understanding")
-    reasoning_depth = _metric_float(academic, "reasoning_depth")
-    if correctness == 0 and understanding == 0 and reasoning_depth == 0:
+    correctness = _metric_optional(academic, "correctness")
+    understanding = _metric_optional(academic, "understanding")
+    reasoning_depth = _metric_optional(academic, "reasoning_depth")
+    if correctness is None or understanding is None or reasoning_depth is None:
         return None
     return round((correctness * 0.35 + understanding * 0.4 + reasoning_depth * 0.25) * 10, 2)
 
@@ -1313,7 +1323,7 @@ def _has_grade_signal(payload: dict | None, *, academic: bool) -> bool:
         keys = ("correctness", "understanding", "reasoning_depth")
     else:
         keys = ("confidence", "communication", "curiosity", "exploratory_thinking", "comprehension")
-    return any(_metric_float(payload, key) > 0 for key in keys)
+    return any(_metric_optional(payload, key) is not None for key in keys)
 
 
 def _aggregate_question_snapshots(items: list[dict]) -> dict:
@@ -1336,11 +1346,11 @@ def _aggregate_question_snapshots(items: list[dict]) -> dict:
 
     def _avg_metric(weighted_dicts: list[tuple[dict, float]], key: str) -> float | None:
         pairs = [
-            (_metric_float(payload, key, default=-1), weight)
+            (_metric_optional(payload, key), weight)
             for payload, weight in weighted_dicts
             if weight > 0
         ]
-        pairs = [(value, weight) for value, weight in pairs if value >= 0 and weight > 0]
+        pairs = [(value, weight) for value, weight in pairs if value is not None and weight > 0]
         if not pairs:
             return None
         total_weight = sum(weight for _, weight in pairs)
@@ -1417,7 +1427,9 @@ def _compute_segment_coverage(
         "student_speaking_ms": speaking_ms,
         "confidence": confidence,
         "weak_transcript": confidence < 0.55,
-        "likely_capture_failure": student_spoke and student_chars < 12 and audio_student_chars < 12,
+        "likely_capture_failure": student_spoke
+        and max(student_chars, live_student_chars, audio_student_chars) < 4
+        and speaking_ms >= 2500,
     }
 
 
@@ -1624,30 +1636,16 @@ async def _grade_question_segment(
 
 
 async def _grade(transcript: str, api_key: str) -> dict:
-    empty_err = {
-        "academic": {"correctness": 0, "understanding": 0, "reasoning_depth": 0},
-        "personality": {
-            "confidence": 0,
-            "communication": 0,
-            "curiosity": 0,
-            "exploratory_thinking": 0,
-            "comprehension": 0,
-        },
-        "summary": "",
-        "strengths": [],
-        "improvements": [],
-    }
-
     try:
         trimmed = _trim_transcript_for_grade(transcript)
         if not trimmed.strip():
-            return _normalize_grade_payload({**empty_err, "summary": "No transcript captured; cannot grade."})
+            return _normalize_grade_payload({"summary": "No transcript captured; cannot grade."})
 
         # Never use str.format() — curly braces in student speech break templates and abort grading.
         marker = "<<<GV_TRANSCRIPT>>>"
         if marker not in GRADING_PROMPT:
             logger.error("GRADING_PROMPT missing transcript marker %s", marker)
-            return _normalize_grade_payload({**empty_err, "summary": "Internal grading prompt misconfigured."})
+            return _normalize_grade_payload({"summary": "Internal grading prompt misconfigured."})
         prompt = GRADING_PROMPT.replace(marker, trimmed, 1)
 
         preferred = (os.environ.get("GRADING_MODEL") or "").strip()
@@ -1663,7 +1661,7 @@ async def _grade(transcript: str, api_key: str) -> dict:
             genai.configure(api_key=api_key)
         except Exception as e:
             logger.exception("grading: google.generativeai configure failed: %s", e)
-            return _normalize_grade_payload({**empty_err, "summary": f"grading error: {e}"})
+            return _normalize_grade_payload({"summary": f"grading error: {e}"})
 
         last_exc: Exception | None = None
 
@@ -1690,13 +1688,12 @@ async def _grade(transcript: str, api_key: str) -> dict:
         logger.exception("grading failed for all models; last error: %s", last_exc)
         return _normalize_grade_payload(
             {
-                **empty_err,
                 "summary": f"grading error (all models): {last_exc}",
             }
         )
     except Exception as e:
         logger.exception("grading unexpected failure: %s", e)
-        return _normalize_grade_payload({**empty_err, "summary": f"grading error: {e}"})
+        return _normalize_grade_payload({"summary": f"grading error: {e}"})
 
 
 async def _post_report(

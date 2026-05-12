@@ -2298,11 +2298,6 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     inProgressRef.current.clear();
   }, [activeQuestionIdx]);
 
-  const skipIntroduction = useCallback(() => {
-    introEndedAtRef.current = Date.now();
-    setIsIntroductionPhase(false);
-  }, [setIsIntroductionPhase]);
-
   // Navigates to next question (agent announcement comes from the auto-visible effect below).
   const navigateToNext = useCallback(() => {
     const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
@@ -2454,16 +2449,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               animate={{ opacity: 1, y: 0 }}
               className="surface-panel rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Interview introduction</p>
-                <button
-                  type="button"
-                  onClick={skipIntroduction}
-                  className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-medium"
-                >
-                  Skip intro
-                </button>
-              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Interview introduction</p>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 AESTR Admission Screening Interview
               </h2>

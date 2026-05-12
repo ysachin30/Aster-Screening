@@ -39,6 +39,33 @@ interface InterviewReport {
   improvements: string[] | null;
   transcript_full: string;
   completed_at: string | null;
+  report_json?: {
+    capture_guardrails?: {
+      review_needed_count?: number;
+      insufficient_data_count?: number;
+      transcribed_count?: number;
+      scored_count?: number;
+      artifact_ready_count?: number;
+      partial_evidence?: boolean;
+      rollup_sources?: {
+        academic?: string[] | string;
+        personality?: string[] | string;
+      };
+    };
+    grading_routes?: Array<{
+      name: string;
+      reliability: number;
+      usable: boolean;
+      notes?: string[];
+    }>;
+  } | null;
+  question_scores?: Array<{
+    question_key: string;
+    status: string;
+    question_score: number | null;
+    needs_review: boolean;
+    summary?: string | null;
+  }> | null;
 }
 
 export default function ResultsPage() {
@@ -148,6 +175,9 @@ function ResultsPageContent() {
 
   const strengths = Array.isArray(report.strengths) ? report.strengths : [];
   const improvements = Array.isArray(report.improvements) ? report.improvements : [];
+  const scoringDiagnostics = report.report_json?.capture_guardrails;
+  const gradingRoutes = Array.isArray(report.report_json?.grading_routes) ? report.report_json?.grading_routes : [];
+  const questionScores = Array.isArray(report.question_scores) ? report.question_scores : [];
 
   return (
     <main className="relative min-h-screen bg-slate-50 px-6 py-8 md:py-12">
@@ -277,6 +307,105 @@ function ResultsPageContent() {
                 </ul>
               </div>
             ) : null}
+          </div>
+        )}
+
+        {(gradingRoutes.length > 0 || questionScores.length > 0) && (
+          <div className="mb-10 surface-panel rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex flex-col gap-6">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Scoring diagnostics</p>
+                <h3 className="mt-2 text-lg font-semibold text-slate-900">How the final grade was built</h3>
+                {scoringDiagnostics?.partial_evidence ? (
+                  <p className="mt-2 text-sm leading-relaxed text-amber-700">
+                    Some parts of the interview had partial evidence, so fallback grading routes were used where possible.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                    The final score combines the strongest valid grading evidence collected during the interview.
+                  </p>
+                )}
+              </div>
+
+              {gradingRoutes.length > 0 && (
+                <div className="grid gap-3 md:grid-cols-3">
+                  {gradingRoutes.map((route) => (
+                    <div key={route.name} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold text-slate-900">
+                          {route.name.replaceAll("_", " ")}
+                        </p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                            route.usable
+                              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border border-slate-200 bg-white text-slate-500"
+                          }`}
+                        >
+                          {route.usable ? "used" : "ignored"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Reliability {Math.round((route.reliability || 0) * 100)}%
+                      </p>
+                      {route.notes?.length ? (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-500">{route.notes[0]}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {scoringDiagnostics && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Scored</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">{scoringDiagnostics.scored_count ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Needs review</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">{scoringDiagnostics.review_needed_count ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcribed only</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">{scoringDiagnostics.transcribed_count ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Insufficient</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">{scoringDiagnostics.insufficient_data_count ?? 0}</p>
+                  </div>
+                </div>
+              )}
+
+              {questionScores.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Question breakdown</p>
+                  <div className="mt-3 grid gap-3">
+                    {questionScores.map((item) => (
+                      <div key={item.question_key} className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{item.question_key}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">Status: {item.status}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {item.needs_review ? (
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                                Review
+                              </span>
+                            ) : null}
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              Score {formatNum(num(item.question_score))}
+                            </span>
+                          </div>
+                        </div>
+                        {item.summary ? <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.summary}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

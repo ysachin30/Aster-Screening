@@ -4,55 +4,177 @@ import { pool } from "../db.js";
 
 export const reportRouter = Router();
 
+type AcademicMetrics = {
+  correctness: number;
+  understanding: number;
+  reasoning_depth: number;
+};
+
+type PersonalityMetrics = {
+  confidence: number;
+  communication: number;
+  curiosity: number;
+  exploratory_thinking: number;
+  comprehension: number;
+};
+
+type PartialAcademicMetrics = Partial<AcademicMetrics>;
+type PartialPersonalityMetrics = Partial<PersonalityMetrics>;
+
+type GradingRoute = {
+  name: "full_interview_grade" | "question_scores_strict" | "question_scores_recovery";
+  academic: PartialAcademicMetrics | null;
+  personality: PartialPersonalityMetrics | null;
+  reliability: number;
+  usable: boolean;
+  notes: string[];
+};
+
 function clamp010(n: number): number {
   if (Number.isNaN(n)) return 0;
   return Math.min(10, Math.max(0, n));
 }
 
-function deriveRollups(
-  academic: { correctness: number; understanding: number; reasoning_depth: number },
-  personality: {
-    confidence: number;
-    communication: number;
-    curiosity: number;
-    exploratory_thinking: number;
-    comprehension: number;
-  },
-) {
-  const correctness = clamp010(academic.correctness);
-  const understanding = clamp010(academic.understanding);
-  const reasoning_depth = clamp010(academic.reasoning_depth);
-  const academic_score = (correctness * 0.35 + understanding * 0.4 + reasoning_depth * 0.25) * 10;
+const academicWeights: Record<keyof AcademicMetrics, number> = {
+  correctness: 0.35,
+  understanding: 0.4,
+  reasoning_depth: 0.25,
+};
 
-  const confidence = clamp010(personality.confidence);
-  const communication = clamp010(personality.communication);
-  const curiosity = clamp010(personality.curiosity);
-  const exploratory_thinking = clamp010(personality.exploratory_thinking);
-  const comprehension = clamp010(personality.comprehension);
-  const personality_score =
-    ((confidence + communication + curiosity + exploratory_thinking + comprehension) / 5) * 10;
+const personalityKeys: Array<keyof PersonalityMetrics> = [
+  "confidence",
+  "communication",
+  "curiosity",
+  "exploratory_thinking",
+  "comprehension",
+];
+
+function toMetricOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? clamp010(numeric) : null;
+}
+
+function compactAcademic(input: PartialAcademicMetrics | null | undefined): PartialAcademicMetrics | null {
+  if (!input || typeof input !== "object") return null;
+  const correctness = toMetricOrNull(input.correctness);
+  const understanding = toMetricOrNull(input.understanding);
+  const reasoning_depth = toMetricOrNull(input.reasoning_depth);
+  const compact: PartialAcademicMetrics = {};
+  if (correctness !== null) compact.correctness = correctness;
+  if (understanding !== null) compact.understanding = understanding;
+  if (reasoning_depth !== null) compact.reasoning_depth = reasoning_depth;
+  return Object.keys(compact).length ? compact : null;
+}
+
+function compactPersonality(input: PartialPersonalityMetrics | null | undefined): PartialPersonalityMetrics | null {
+  if (!input || typeof input !== "object") return null;
+  const compact: PartialPersonalityMetrics = {};
+  for (const key of personalityKeys) {
+    const value = toMetricOrNull(input[key]);
+    if (value !== null) compact[key] = value;
+  }
+  return Object.keys(compact).length ? compact : null;
+}
+
+function availableAcademicMetricCount(academic: PartialAcademicMetrics | null | undefined) {
+  return compactAcademic(academic) ? Object.keys(compactAcademic(academic)!).length : 0;
+}
+
+function availablePersonalityMetricCount(personality: PartialPersonalityMetrics | null | undefined) {
+  return compactPersonality(personality) ? Object.keys(compactPersonality(personality)!).length : 0;
+}
+
+function computeAcademicScore(academic: PartialAcademicMetrics | null | undefined) {
+  const compact = compactAcademic(academic);
+  if (!compact) return null;
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const [key, weight] of Object.entries(academicWeights) as Array<[keyof AcademicMetrics, number]>) {
+    const value = compact[key];
+    if (value === undefined) continue;
+    weighted += clamp010(value) * weight;
+    totalWeight += weight;
+  }
+  if (totalWeight <= 0) return null;
+  return (weighted / totalWeight) * 10;
+}
+
+function computePersonalityScore(personality: PartialPersonalityMetrics | null | undefined) {
+  const compact = compactPersonality(personality);
+  if (!compact) return null;
+  const values = personalityKeys
+    .map((key) => compact[key])
+    .filter((value): value is number => value !== undefined)
+    .map((value) => clamp010(value));
+  if (!values.length) return null;
+  return (values.reduce((sum, value) => sum + value, 0) / values.length) * 10;
+}
+
+function deriveRollups(
+  academic: PartialAcademicMetrics | null,
+  personality: PartialPersonalityMetrics | null,
+  options?: { partialEvidence?: boolean },
+) {
+  const academicCompact = compactAcademic(academic);
+  const personalityCompact = compactPersonality(personality);
+  const correctness = academicCompact?.correctness ?? null;
+  const understanding = academicCompact?.understanding ?? null;
+  const reasoning_depth = academicCompact?.reasoning_depth ?? null;
+  const academic_score = computeAcademicScore(academicCompact);
+
+  const confidence = personalityCompact?.confidence ?? null;
+  const communication = personalityCompact?.communication ?? null;
+  const curiosity = personalityCompact?.curiosity ?? null;
+  const exploratory_thinking = personalityCompact?.exploratory_thinking ?? null;
+  const comprehension = personalityCompact?.comprehension ?? null;
+  const personality_score = computePersonalityScore(personalityCompact);
+
+  if (academic_score === null || personality_score === null) {
+    return {
+      academic_correctness: correctness,
+      academic_understanding: understanding,
+      academic_reasoning: reasoning_depth,
+      academic_score,
+      conf_score: confidence,
+      communication_score: communication,
+      curiosity_score: curiosity,
+      exploratory_score: exploratory_thinking,
+      comprehension_score: comprehension,
+      personality_score,
+      overall_score: null,
+      band: null,
+      shortlist_status: null,
+      decision_reason: "Pending review: insufficient evidence for reliable automatic scoring.",
+    };
+  }
 
   const overall_score = 0.55 * academic_score + 0.45 * personality_score;
   const band: "A" | "B" | "C" | "D" =
-    overall_score >= 85 ? "A" : overall_score >= 68 ? "B" : overall_score >= 45 ? "C" : "D";
-  const criticalFail = academic_score < 45 || communication < 4 || comprehension < 4;
-  const shortlist_status: "shortlist" | "borderline" | "reject" =
-    criticalFail || band === "D" ? "reject" : band === "C" ? "borderline" : "shortlist";
+    overall_score >= 85 ? "A" : overall_score >= 70 ? "B" : overall_score >= 55 ? "C" : "D";
+  const severeAcademic = academic_score < 35;
+  const severeCommunication = communication !== null && communication < 3;
+  const severeComprehension = comprehension !== null && comprehension < 3;
+  const clearlyWeakOverall = overall_score < 40;
+  const criticalFail = severeAcademic || severeCommunication || severeComprehension || clearlyWeakOverall;
+  const shortlist_status: "shortlist" | "borderline" | "reject" = criticalFail
+    ? "reject"
+    : options?.partialEvidence
+      ? "borderline"
+      : "shortlist";
 
   const parts: string[] = [];
-  if (criticalFail) {
-    if (academic_score < 45) parts.push("academic below 45");
-    if (communication < 4) parts.push("communication below 4");
-    if (comprehension < 4) parts.push("comprehension below 4");
-  }
+  if (severeAcademic) parts.push("academic below 35");
+  if (severeCommunication) parts.push("communication below 3");
+  if (severeComprehension) parts.push("comprehension below 3");
+  if (clearlyWeakOverall) parts.push("overall below 40");
+
   const decision_reason =
     shortlist_status === "reject"
-      ? criticalFail
-        ? `Reject (critical): ${parts.join("; ")}`
-        : "Reject: band D"
+      ? `Reject: ${parts.join("; ")}`
       : shortlist_status === "borderline"
-        ? "Borderline: band C, no critical fail"
-        : `Shortlist: band ${band}, no critical fail`;
+        ? `Borderline: usable score with partial evidence (band ${band})`
+        : `Shortlist: band ${band}, average-or-better performance`;
 
   return {
     academic_correctness: correctness,
@@ -73,70 +195,11 @@ function deriveRollups(
 }
 
 function deriveRollupsNullable(
-  academic: { correctness: number; understanding: number; reasoning_depth: number } | null,
-  personality: {
-    confidence: number;
-    communication: number;
-    curiosity: number;
-    exploratory_thinking: number;
-    comprehension: number;
-  } | null,
+  academic: PartialAcademicMetrics | null,
+  personality: PartialPersonalityMetrics | null,
+  options?: { partialEvidence?: boolean },
 ) {
-  const academicPart = academic
-    ? {
-        academic_correctness: clamp010(academic.correctness),
-        academic_understanding: clamp010(academic.understanding),
-        academic_reasoning: clamp010(academic.reasoning_depth),
-        academic_score:
-          (clamp010(academic.correctness) * 0.35 +
-            clamp010(academic.understanding) * 0.4 +
-            clamp010(academic.reasoning_depth) * 0.25) *
-          10,
-      }
-    : {
-        academic_correctness: null,
-        academic_understanding: null,
-        academic_reasoning: null,
-        academic_score: null,
-      };
-
-  const personalityPart = personality
-    ? {
-        conf_score: clamp010(personality.confidence),
-        communication_score: clamp010(personality.communication),
-        curiosity_score: clamp010(personality.curiosity),
-        exploratory_score: clamp010(personality.exploratory_thinking),
-        comprehension_score: clamp010(personality.comprehension),
-        personality_score:
-          ((clamp010(personality.confidence) +
-            clamp010(personality.communication) +
-            clamp010(personality.curiosity) +
-            clamp010(personality.exploratory_thinking) +
-            clamp010(personality.comprehension)) /
-            5) *
-          10,
-      }
-    : {
-        conf_score: null,
-        communication_score: null,
-        curiosity_score: null,
-        exploratory_score: null,
-        comprehension_score: null,
-        personality_score: null,
-      };
-
-  if (!academic || !personality) {
-    return {
-      ...academicPart,
-      ...personalityPart,
-      overall_score: null,
-      band: null,
-      shortlist_status: null,
-      decision_reason: "Pending review: insufficient evidence for reliable automatic scoring.",
-    };
-  }
-
-  return deriveRollups(academic, personality);
+  return deriveRollups(academic, personality, options);
 }
 
 function deriveQuestionScore(academic: { correctness?: number | null; understanding?: number | null; reasoning_depth?: number | null }) {
@@ -153,8 +216,8 @@ function deriveQuestionScore(academic: { correctness?: number | null; understand
   return (correctness * 0.35 + understanding * 0.4 + reasoning_depth * 0.25) * 10;
 }
 
-function hasAcademicSignal(academic: { correctness: number; understanding: number; reasoning_depth: number }) {
-  return [academic.correctness, academic.understanding, academic.reasoning_depth].some((n) => clamp010(n) > 0);
+function hasAcademicSignal(academic: PartialAcademicMetrics | null | undefined) {
+  return availableAcademicMetricCount(academic) > 0;
 }
 
 function hasPersonalitySignal(personality: {
@@ -163,14 +226,8 @@ function hasPersonalitySignal(personality: {
   curiosity: number;
   exploratory_thinking: number;
   comprehension: number;
-}) {
-  return [
-    personality.confidence,
-    personality.communication,
-    personality.curiosity,
-    personality.exploratory_thinking,
-    personality.comprehension,
-  ].some((n) => clamp010(n) > 0);
+} | PartialPersonalityMetrics | null | undefined) {
+  return availablePersonalityMetricCount(personality) > 0;
 }
 
 function average(nums: number[]) {
@@ -246,6 +303,29 @@ function deriveAcademicFromQuestionRows(rows: any[]) {
   return { correctness, understanding, reasoning_depth };
 }
 
+function deriveAcademicRecoveryFromQuestionRows(rows: any[]) {
+  const correctness = weightedAverage(
+    rows
+      .filter((r) => r.academic_correctness !== null)
+      .map((r) => ({ value: Number(r.academic_correctness), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  const understanding = weightedAverage(
+    rows
+      .filter((r) => r.academic_understanding !== null)
+      .map((r) => ({ value: Number(r.academic_understanding), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  const reasoning_depth = weightedAverage(
+    rows
+      .filter((r) => r.academic_reasoning !== null)
+      .map((r) => ({ value: Number(r.academic_reasoning), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  return compactAcademic({
+    correctness: correctness ?? undefined,
+    understanding: understanding ?? undefined,
+    reasoning_depth: reasoning_depth ?? undefined,
+  });
+}
+
 function derivePersonalityFromQuestionRows(rows: any[]) {
   const confidence = weightedAverage(
     rows
@@ -282,6 +362,85 @@ function derivePersonalityFromQuestionRows(rows: any[]) {
     return null;
   }
   return { confidence, communication, curiosity, exploratory_thinking, comprehension };
+}
+
+function derivePersonalityRecoveryFromQuestionRows(rows: any[]) {
+  const confidence = weightedAverage(
+    rows
+      .filter((r) => r.confidence_score !== null)
+      .map((r) => ({ value: Number(r.confidence_score), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  const communication = weightedAverage(
+    rows
+      .filter((r) => r.communication_score !== null)
+      .map((r) => ({ value: Number(r.communication_score), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  const curiosity = weightedAverage(
+    rows
+      .filter((r) => r.curiosity_score !== null)
+      .map((r) => ({ value: Number(r.curiosity_score), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  const exploratory_thinking = weightedAverage(
+    rows
+      .filter((r) => r.exploratory_score !== null)
+      .map((r) => ({ value: Number(r.exploratory_score), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  const comprehension = weightedAverage(
+    rows
+      .filter((r) => r.comprehension_score !== null)
+      .map((r) => ({ value: Number(r.comprehension_score), weight: Math.max(0.2, rowEvidenceWeight(r)) })),
+  );
+  return compactPersonality({
+    confidence: confidence ?? undefined,
+    communication: communication ?? undefined,
+    curiosity: curiosity ?? undefined,
+    exploratory_thinking: exploratory_thinking ?? undefined,
+    comprehension: comprehension ?? undefined,
+  });
+}
+
+function buildQuestionRouteWeight(rows: any[], recovery = false) {
+  const eligible = rows.filter(isRollupEligibleQuestionRow);
+  if (!eligible.length) return 0;
+  const total = Math.max(rows.length, eligible.length);
+  const coverage = eligible.length / total;
+  const reviewPenalty = eligible.filter((row) => row.needs_review).length / eligible.length;
+  const base = recovery ? 0.45 : 0.7;
+  return Number((base + coverage * (recovery ? 0.2 : 0.25) - reviewPenalty * 0.2).toFixed(3));
+}
+
+function fuseAcademicRoutes(routes: GradingRoute[]) {
+  const fused: PartialAcademicMetrics = {};
+  for (const key of Object.keys(academicWeights) as Array<keyof AcademicMetrics>) {
+    const values = routes
+      .map((route) => {
+        const value = route.academic?.[key];
+        return value === undefined || !route.usable || route.reliability <= 0
+          ? null
+          : { value: clamp010(value), weight: route.reliability };
+      })
+      .filter((item): item is { value: number; weight: number } => item !== null);
+    const metric = weightedAverage(values);
+    if (metric !== null) fused[key] = Number(metric.toFixed(2));
+  }
+  return compactAcademic(fused);
+}
+
+function fusePersonalityRoutes(routes: GradingRoute[]) {
+  const fused: PartialPersonalityMetrics = {};
+  for (const key of personalityKeys) {
+    const values = routes
+      .map((route) => {
+        const value = route.personality?.[key];
+        return value === undefined || !route.usable || route.reliability <= 0
+          ? null
+          : { value: clamp010(value), weight: route.reliability };
+      })
+      .filter((item): item is { value: number; weight: number } => item !== null);
+    const metric = weightedAverage(values);
+    if (metric !== null) fused[key] = Number(metric.toFixed(2));
+  }
+  return compactPersonality(fused);
 }
 
 function mapQuestionScoreRow(row: any, includeAudio = false) {
@@ -334,20 +493,6 @@ async function getQuestionScoreRowsByRoom(room: string) {
   return rows;
 }
 
-const AcademicSchema = z.object({
-  correctness: z.coerce.number(),
-  understanding: z.coerce.number(),
-  reasoning_depth: z.coerce.number(),
-});
-
-const PersonalitySchema = z.object({
-  confidence: z.coerce.number(),
-  communication: z.coerce.number(),
-  curiosity: z.coerce.number(),
-  exploratory_thinking: z.coerce.number(),
-  comprehension: z.coerce.number(),
-});
-
 const PartialAcademicSchema = z.object({
   correctness: z.coerce.number().optional(),
   understanding: z.coerce.number().optional(),
@@ -366,8 +511,8 @@ const PostReportBody = z.object({
   student_id: z.string().min(1),
   room: z.string().min(1),
   transcript_full: z.string(),
-  academic: AcademicSchema,
-  personality: PersonalitySchema,
+  academic: PartialAcademicSchema.nullable().optional(),
+  personality: PartialPersonalitySchema.nullable().optional(),
   summary: z.string().optional(),
   strengths: z.array(z.string()).optional(),
   improvements: z.array(z.string()).optional(),
@@ -566,15 +711,51 @@ reportRouter.post("/report", async (req, res) => {
   try {
     const questionRows = await getQuestionScoreRowsByRoom(room);
     const questionBreakdown = questionRows.map((row) => mapQuestionScoreRow(row));
-    const fallbackAcademic = deriveAcademicFromQuestionRows(questionRows);
-    const fallbackPersonality = derivePersonalityFromQuestionRows(questionRows);
-    const transcriptAcademic = hasAcademicSignal(academic) ? academic : null;
-    const transcriptPersonality = hasPersonalitySignal(personality) ? personality : null;
-    const useAcademicFallback = fallbackAcademic !== null;
-    const usePersonalityFallback = transcriptPersonality === null && fallbackPersonality !== null;
-    const effectiveAcademic = fallbackAcademic ?? transcriptAcademic;
-    const effectivePersonality = fallbackPersonality ?? transcriptPersonality;
-    const roll = deriveRollupsNullable(effectiveAcademic, effectivePersonality);
+    const transcriptAcademic = compactAcademic(academic ?? null);
+    const transcriptPersonality = compactPersonality(personality ?? null);
+    const strictAcademic = deriveAcademicFromQuestionRows(questionRows);
+    const strictPersonality = derivePersonalityFromQuestionRows(questionRows);
+    const recoveryAcademic = deriveAcademicRecoveryFromQuestionRows(questionRows);
+    const recoveryPersonality = derivePersonalityRecoveryFromQuestionRows(questionRows);
+    const scoringRoutes: GradingRoute[] = [
+      {
+        name: "full_interview_grade",
+        academic: transcriptAcademic,
+        personality: transcriptPersonality,
+        reliability: hasAcademicSignal(transcriptAcademic) || hasPersonalitySignal(transcriptPersonality) ? 1 : 0,
+        usable: hasAcademicSignal(transcriptAcademic) || hasPersonalitySignal(transcriptPersonality),
+        notes: isTechnicalSummary(summary) ? ["Transcript grading summary is fallback/technical."] : ["Transcript-wide grading available."],
+      },
+      {
+        name: "question_scores_strict",
+        academic: strictAcademic,
+        personality: strictPersonality,
+        reliability:
+          hasAcademicSignal(strictAcademic) || hasPersonalitySignal(strictPersonality)
+            ? buildQuestionRouteWeight(questionRows, false)
+            : 0,
+        usable: hasAcademicSignal(strictAcademic) || hasPersonalitySignal(strictPersonality),
+        notes: ["Question-level scored rows with strict completeness requirements."],
+      },
+      {
+        name: "question_scores_recovery",
+        academic: recoveryAcademic,
+        personality: recoveryPersonality,
+        reliability:
+          hasAcademicSignal(recoveryAcademic) || hasPersonalitySignal(recoveryPersonality)
+            ? buildQuestionRouteWeight(questionRows, true)
+            : 0,
+        usable: hasAcademicSignal(recoveryAcademic) || hasPersonalitySignal(recoveryPersonality),
+        notes: ["Recovery route built from partial question evidence."],
+      },
+    ];
+    const effectiveAcademic = fuseAcademicRoutes(scoringRoutes);
+    const effectivePersonality = fusePersonalityRoutes(scoringRoutes);
+    const partialEvidence =
+      availableAcademicMetricCount(effectiveAcademic) < 3 ||
+      availablePersonalityMetricCount(effectivePersonality) < personalityKeys.length ||
+      (!scoringRoutes[0].usable && !scoringRoutes[1].usable && scoringRoutes[2].usable);
+    const roll = deriveRollupsNullable(effectiveAcademic, effectivePersonality, { partialEvidence });
     const effectiveSummary = deriveDisplaySummary(summary, questionBreakdown);
     const strengthsArr = strengths?.slice(0, 10) ?? [];
     const improvementsArr = improvements?.slice(0, 10) ?? [];
@@ -591,18 +772,32 @@ reportRouter.post("/report", async (req, res) => {
       improvements: improvementsArr,
       question_scores: questionBreakdown,
       capture_guardrails: {
-        used_live_question_academic_fallback: useAcademicFallback,
-        used_live_question_personality_fallback: usePersonalityFallback,
+        used_live_question_academic_fallback: hasAcademicSignal(strictAcademic) || hasAcademicSignal(recoveryAcademic),
+        used_live_question_personality_fallback:
+          hasPersonalitySignal(strictPersonality) || hasPersonalitySignal(recoveryPersonality),
         review_needed_count: questionBreakdown.filter((item) => item.needs_review).length,
         insufficient_data_count: statusCounts.insufficient_data ?? 0,
         transcribed_count: statusCounts.transcribed ?? 0,
         scored_count: (statusCounts.scored ?? 0) + (statusCounts.final ?? 0),
         artifact_ready_count: statusCounts.artifact_ready ?? 0,
+        partial_evidence: partialEvidence,
         rollup_sources: {
-          academic: useAcademicFallback ? "question_scores" : "full_interview_grade",
-          personality: usePersonalityFallback ? "question_scores" : "full_interview_grade",
+          academic: scoringRoutes
+            .filter((route) => route.usable && hasAcademicSignal(route.academic))
+            .map((route) => route.name),
+          personality: scoringRoutes
+            .filter((route) => route.usable && hasPersonalitySignal(route.personality))
+            .map((route) => route.name),
         },
       },
+      grading_routes: scoringRoutes.map((route) => ({
+        name: route.name,
+        reliability: route.reliability,
+        usable: route.usable,
+        academic: route.academic,
+        personality: route.personality,
+        notes: route.notes,
+      })),
       server: {
         academic_score: roll.academic_score,
         personality_score: roll.personality_score,
