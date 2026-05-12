@@ -1847,29 +1847,49 @@ def _render_prompt(template: str, replacements: dict[str, object]) -> str:
     return rendered
 
 
-def _generate_json_text(prompt: str, api_key: str) -> dict:
-    import google.generativeai as genai
+DEPRECATED_GEMINI_MODELS = {
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-exp",
+}
 
-    genai.configure(api_key=api_key)
-    preferred = (os.environ.get("GRADING_MODEL") or "").strip()
-    fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+
+def _build_model_candidates(preferred: str, fallbacks: list[str], *, purpose: str) -> list[str]:
     models: list[str] = []
-    for m in [preferred, *fallbacks]:
-        if m and m not in models:
-            models.append(m)
+    skipped: list[str] = []
+    for raw_name in [preferred, *fallbacks]:
+        model_name = (raw_name or "").strip()
+        if not model_name or model_name in models:
+            continue
+        if model_name in DEPRECATED_GEMINI_MODELS:
+            skipped.append(model_name)
+            continue
+        models.append(model_name)
+    if skipped:
+        logger.warning("%s skipping deprecated Gemini models: %s", purpose, ", ".join(skipped))
+    return models
+
+
+def _generate_json_text(prompt: str, api_key: str) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+    preferred = (os.environ.get("GRADING_MODEL") or "").strip()
+    fallbacks = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    models = _build_model_candidates(preferred, fallbacks, purpose="text grading")
 
     last_exc: Exception | None = None
     for model_name in models:
         try:
-            model = genai.GenerativeModel(
-                model_name,
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.2,
-                },
+            resp = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
             )
-            resp = model.generate_content(prompt)
-            raw_text = _gemini_response_text(resp)
+            raw_text = getattr(resp, "text", "") or _gemini_response_text(resp)
             parsed = _extract_json_dict(raw_text)
             if not parsed:
                 raise ValueError(f"empty or non-object JSON from model (preview={raw_text[:240]!r})")
@@ -1886,11 +1906,8 @@ def _generate_json_from_audio(prompt: str, audio_bytes: bytes, mime_type: str, a
 
     client = genai.Client(api_key=api_key)
     preferred = (os.environ.get("AUDIO_GRADING_MODEL") or "").strip()
-    fallbacks = ["gemini-2.5-flash", "gemini-2.0-flash"]
-    models: list[str] = []
-    for m in [preferred, *fallbacks]:
-        if m and m not in models:
-            models.append(m)
+    fallbacks = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    models = _build_model_candidates(preferred, fallbacks, purpose="audio grading")
 
     last_exc: Exception | None = None
     for model_name in models:
@@ -1931,11 +1948,8 @@ def _transcribe_audio_text(audio_bytes: bytes, mime_type: str, api_key: str) -> 
 
     client = genai.Client(api_key=api_key)
     preferred = (os.environ.get("TRANSCRIPTION_MODEL") or "").strip()
-    fallbacks = ["gemini-2.5-flash", "gemini-2.0-flash"]
-    models: list[str] = []
-    for model_name in [preferred, *fallbacks]:
-        if model_name and model_name not in models:
-            models.append(model_name)
+    fallbacks = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    models = _build_model_candidates(preferred, fallbacks, purpose="transcription")
 
     last_exc: Exception | None = None
     for model_name in models:
@@ -2076,33 +2090,31 @@ async def _grade(transcript: str, api_key: str) -> dict:
         prompt = GRADING_PROMPT.replace(marker, trimmed, 1)
 
         preferred = (os.environ.get("GRADING_MODEL") or "").strip()
-        fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
-        models: list[str] = []
-        for m in [preferred, *fallbacks]:
-            if m and m not in models:
-                models.append(m)
+        fallbacks = ["gemini-2.5-flash", "gemini-1.5-flash"]
+        models = _build_model_candidates(preferred, fallbacks, purpose="final grading")
 
         try:
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types
 
-            genai.configure(api_key=api_key)
+            client = genai.Client(api_key=api_key)
         except Exception as e:
-            logger.exception("grading: google.generativeai configure failed: %s", e)
+            logger.exception("grading: google.genai client setup failed: %s", e)
             return _normalize_grade_payload({"summary": f"grading error: {e}"})
 
         last_exc: Exception | None = None
 
         for model_name in models:
             try:
-                model = genai.GenerativeModel(
-                    model_name,
-                    generation_config={
-                        "response_mime_type": "application/json",
-                        "temperature": 0.25,
-                    },
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.25,
+                    ),
                 )
-                resp = model.generate_content(prompt)
-                raw_text = _gemini_response_text(resp)
+                raw_text = getattr(resp, "text", "") or _gemini_response_text(resp)
                 parsed = _extract_json_dict(raw_text)
                 if not parsed:
                     raise ValueError(f"empty or non-object JSON from model (preview={raw_text[:240]!r})")
