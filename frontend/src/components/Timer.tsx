@@ -3,12 +3,22 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
-const RADIUS = 18;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const DEFAULT_RADIUS = 18;
+const COMPACT_RADIUS = 14;
 
-export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () => void }) {
+export default function Timer({
+  minutes,
+  onEnd,
+  compact = false,
+}: {
+  minutes: number;
+  onEnd: () => void;
+  compact?: boolean;
+}) {
   const totalSeconds = minutes * 60;
   const [secondsRemaining, setSecondsRemaining] = useState(totalSeconds);
+  const radius = compact ? COMPACT_RADIUS : DEFAULT_RADIUS;
+  const circumference = 2 * Math.PI * radius;
 
   useEffect(() => {
     if (secondsRemaining <= 0) {
@@ -28,7 +38,7 @@ export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () =
     .padStart(2, "0");
   const secondsLabel = (secondsRemaining % 60).toString().padStart(2, "0");
   const progress = secondsRemaining / totalSeconds;
-  const dashOffset = CIRCUMFERENCE * (1 - progress);
+  const dashOffset = circumference * (1 - progress);
 
   const status = useMemo(() => {
     if (secondsRemaining <= 30) {
@@ -64,30 +74,30 @@ export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () =
     <motion.div
       animate={isUrgent ? { y: [0, -1, 0] } : undefined}
       transition={isUrgent ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" } : undefined}
-      className={`rounded-xl border px-2.5 py-2 ${status.tone} ${isCritical ? "animate-timer-pulse" : ""}`}
+      className={`rounded-xl border ${compact ? "px-2 py-1" : "px-2 py-1.5 sm:px-2.5 sm:py-2"} ${status.tone} ${isCritical ? "animate-timer-pulse" : ""}`}
       aria-live="polite"
     >
-      <div className="flex items-center gap-2.5">
-        <div className="relative h-[44px] w-[44px] shrink-0">
-          <svg className="-rotate-90 h-[44px] w-[44px]" viewBox="0 0 52 52">
+      <div className={`flex items-center ${compact ? "gap-1.5" : "gap-2 sm:gap-2.5"}`}>
+        <div className={`relative shrink-0 ${compact ? "h-[32px] w-[32px]" : "h-[40px] w-[40px] sm:h-[44px] sm:w-[44px]"}`}>
+          <svg className={`-rotate-90 ${compact ? "h-[32px] w-[32px]" : "h-[40px] w-[40px] sm:h-[44px] sm:w-[44px]"}`} viewBox="0 0 52 52">
             <circle
               cx="26"
               cy="26"
-              r={RADIUS}
+              r={radius}
               fill="none"
               stroke="currentColor"
               className="opacity-10"
-              strokeWidth="4"
+              strokeWidth={compact ? 3.5 : 4}
             />
             <circle
               cx="26"
               cy="26"
-              r={RADIUS}
+              r={radius}
               fill="none"
               stroke={status.color}
-              strokeWidth="4"
+              strokeWidth={compact ? 3.5 : 4}
               strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
+              strokeDasharray={circumference}
               strokeDashoffset={dashOffset}
               style={{
                 transition: "stroke-dashoffset 0.7s linear, stroke 0.35s ease",
@@ -95,21 +105,21 @@ export default function Timer({ minutes, onEnd }: { minutes: number; onEnd: () =
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-[8px] font-semibold uppercase tracking-widest text-slate-500">
+            <span className={`${compact ? "text-[6px]" : "text-[7px] sm:text-[8px]"} font-semibold uppercase tracking-widest text-slate-500`}>
               Time
             </span>
           </div>
         </div>
 
-        <div className="min-w-[6.75rem]">
-          <p className="text-[8px] font-semibold uppercase tracking-widest text-slate-500">
+        <div className="min-w-0">
+          <p className={`${compact ? "hidden" : "hidden sm:block"} text-[8px] font-semibold uppercase tracking-widest text-slate-500`}>
             Assessment timer
           </p>
           <div className="mt-0.5 flex items-center gap-1.5">
-            <span className="text-xl font-semibold tracking-tight tabular-nums">
+            <span className={`${compact ? "text-sm" : "text-lg sm:text-xl"} font-semibold tracking-tight tabular-nums`}>
               {minutesLabel}:{secondsLabel}
             </span>
-            <span className="rounded-full border border-slate-200 bg-slate-100/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-slate-600">
+            <span className={`${compact ? "hidden" : "hidden sm:inline-flex"} rounded-full border border-slate-200 bg-slate-100/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-slate-600`}>
               {status.label}
             </span>
           </div>

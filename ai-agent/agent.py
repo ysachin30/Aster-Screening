@@ -54,9 +54,9 @@ CRITICAL RULES:
 4. Once in the QUESTION PHASE, say only the question text directly. Do not add any preamble, screen description, or lead-in before the question.
 5. IMPORTANT: Do NOT say "let's move to the next question". Instead, instruct the student to click the "Submit & Next" button on the screen only after they have answered and are ready to proceed.
 6. ALWAYS stay on-topic for whichever question is currently visible on the screen.
-   For Q2 Part 1 they see a theory/diagram slide only — discuss that slide (no trajectory drawing).
-   For Q2 Parts 2–3 they use the satellite trajectory canvas — speak about what they draw there.
-   When they are on Q1, discuss the scenario shown in Q1. Never discuss unrelated topics.
+   Use the screen only to know which question is active.
+   Do NOT narrate, summarize, explain, or discuss the surrounding visual/context before or after dictating the question.
+   Never describe the Q1 scene, the Q2 diagram, or any other on-screen context unless the question text itself explicitly says so.
 7. In question phase, you may ask AT MOST 2 short interrogative follow-ups for a question. NEVER reveal the correct answer. Only after the student has answered and finished that turn may you instruct them to click "Submit & Next" (or for Q2 Parts 1–2 use "Next Part" per on-screen navigation).
 8. For Q2 Part 1 (theory slide): there is NO drawing — elicit a spoken answer about forces/orbit; you may probe briefly; only after they finish answering may you tell them to click "Next Part".
    For Q2 Parts 2–3: NO cross-questioning — let them draw trajectories on the canvas; assess from their drawing; use "Next Part" (part 2) or "Submit & Next" (after part 3) as appropriate.
@@ -86,7 +86,7 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         "\n--- INTERVIEW QUESTIONS ---\n",
         f"You have {len(questions)} question(s) to work through with the student. ",
         "The student switches between questions via tabs Q1, Q2 on their screen. ",
-        "You can see their screen through the video stream, but when a question opens you must speak the question text directly with no preamble. ",
+        "You can see their screen through the video stream, but when a question opens you must speak only the question text directly with no preamble and no visual commentary. ",
         "Ask the questions in order (Q1 first). Move to the next once they've given a reasonable answer. ",
         "IMPORTANT: Internally VALIDATE their answers against the expected answer rubric below. ",
         "Do NOT read the expected answer aloud.\n",
@@ -101,7 +101,7 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
                 f"QUESTION DELIVERY for Q{qid}: Speak the question text directly when it opens. "
                 "Do NOT add any screen narration, framing sentence, or introduction before the question. "
                 "Do NOT repeat the full question text yourself after it has been said once; "
-                "after it is read once, probe their reasoning only. Never give hints, steps, or the solution.\n"
+                "after it is read once, probe their reasoning only. Never describe the visual/context, and never give hints, steps, or the solution.\n"
             )
         if kind == "satellite":
             parts.append(
@@ -900,7 +900,6 @@ async def entrypoint(ctx: JobContext):
         qid = payload.get("questionId")
         kind = payload.get("kind", "")
         qtext = payload.get("question", "")
-        qctx = payload.get("context", "") or ""
         finish = bool(payload.get("finish"))
         event_id = str(payload.get("eventId") or "").strip() or None
         part_raw = payload.get("part")
@@ -946,7 +945,6 @@ async def entrypoint(ctx: JobContext):
                         "part": int(part_num or 0),
                         "kind": kind,
                         "question_text": qtext,
-                        "context": qctx,
                         "started_at": time.time(),
                         "finalized": False,
                         "agent_turns": 0,
@@ -1002,6 +1000,7 @@ async def entrypoint(ctx: JobContext):
                 "Speak only in English. "
                 "Your entire next response must be exactly the QUESTION TEXT BELOW VERBATIM and nothing else. "
                 "Do not say any intro line, label, greeting, screen description, framing sentence, follow-up, or navigation instruction in that first response. "
+                "Do not mention any scenario, accident, diagram, animation, or other context outside the exact question text. "
                 "After that first response, wait for the student to speak before asking any follow-up or giving any navigation instruction. "
                 + interaction_line
                 + nav_line + " "

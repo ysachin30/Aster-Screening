@@ -349,6 +349,7 @@ function InterviewPageContent() {
 function AudioUnlockGate({ children }: { children: React.ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
   const [micOk, setMicOk] = useState<boolean | null>(null);
+  const [showMicBlockedNotice, setShowMicBlockedNotice] = useState(true);
 
   const unlock = async () => {
     try {
@@ -361,6 +362,10 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
     } catch { setMicOk(false); }
     setUnlocked(true);
   };
+
+  useEffect(() => {
+    if (micOk === false) setShowMicBlockedNotice(true);
+  }, [micOk]);
 
   if (!unlocked) {
     return (
@@ -418,12 +423,24 @@ function AudioUnlockGate({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {micOk === false && (
+      {micOk === false && showMicBlockedNotice && (
         <div
-          className="fixed left-1/2 z-40 max-w-[min(calc(100vw-1.5rem),24rem)] -translate-x-1/2 rounded-2xl border border-red-400/20 bg-red-500/12 px-4 py-3 text-center text-[11px] text-red-100 shadow-lg backdrop-blur-xl bottom-[max(1rem,env(safe-area-inset-bottom))] lg:bottom-auto lg:top-4"
+          className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 rounded-2xl border border-rose-200 bg-white/95 px-3.5 py-3 text-left text-[11px] text-rose-700 shadow-lg backdrop-blur sm:left-1/2 sm:right-auto sm:max-w-[22rem] sm:-translate-x-1/2 sm:text-center lg:bottom-auto lg:top-4"
           role="status"
         >
-          Microphone access is blocked. Update browser permissions to continue.
+          <div className="flex items-start justify-between gap-3">
+            <p className="leading-relaxed">
+              Microphone access is blocked. Update browser permissions to continue.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowMicBlockedNotice(false)}
+              className="shrink-0 rounded-full border border-rose-200 px-2 py-0.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50"
+              aria-label="Dismiss microphone warning"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
       {children}
@@ -720,16 +737,16 @@ function AssessmentAvatar({
   const ended = state === "ended";
 
   return (
-    <div className="relative flex h-20 w-20 items-center justify-center sm:h-24 sm:w-24">
+    <div className="relative flex h-16 w-16 items-center justify-center sm:h-24 sm:w-24">
       <div className={`absolute inset-0 rounded-full border ${palette.ring} bg-white shadow-sm`} />
       <div
         className={`absolute inset-2 rounded-full border border-slate-100 ${thinking ? "animate-spin-slow" : ""}`}
       />
       <div
-        className={`relative flex h-[60px] w-[60px] items-center justify-center rounded-full border border-slate-200 ${palette.inner} shadow-inner sm:h-[68px] sm:w-[68px]`}
+        className={`relative flex h-[48px] w-[48px] items-center justify-center rounded-full border border-slate-200 ${palette.inner} shadow-inner sm:h-[68px] sm:w-[68px]`}
       >
         {ended ? (
-          <svg className={`h-6 w-6 ${palette.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className={`h-5 w-5 sm:h-6 sm:w-6 ${palette.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />
           </svg>
@@ -744,12 +761,12 @@ function AssessmentAvatar({
             ))}
           </div>
         ) : thinking ? (
-          <div className="relative flex h-6 w-6 items-center justify-center">
+          <div className="relative flex h-5 w-5 items-center justify-center sm:h-6 sm:w-6">
             <span className={`absolute h-1.5 w-1.5 rounded-full ${palette.accent}`} />
             <span className={`absolute h-6 w-6 rounded-full border-2 border-slate-200 border-t-${tone === 'ai' ? 'indigo' : 'slate'}-400 animate-spin`} />
           </div>
         ) : (
-          <span className={`text-sm font-bold tracking-widest ${palette.text}`}>{label}</span>
+          <span className={`text-xs font-bold tracking-widest sm:text-sm ${palette.text}`}>{label}</span>
         )}
       </div>
     </div>
@@ -855,7 +872,6 @@ function QuestionPanel({
   onActivitySnapshot?: (snapshot: QuestionInteractionSnapshot) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [showContext, setShowContext] = useState(false);
   // Satellite state (used only when question.kind === "satellite")
   const [satAngle, setSatAngle] = useState(Math.PI / 2); // start at bottom of orbit (opposite position)
   const [drawMode, setDrawMode] = useState(false);
@@ -1415,12 +1431,6 @@ function QuestionPanel({
     ctx.font = "bold 18px system-ui";
     const qLines = wrap(question.question, W - 48);
     qLines.forEach((l, i) => ctx.fillText(l, 24, 60 + i * 26));
-    let y = 60 + qLines.length * 26 + 20;
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "13px system-ui";
-    const ctxLines = wrap(question.context, W - 48);
-    ctxLines.slice(0, 10).forEach((l, i) => ctx.fillText(l, 24, y + i * 18));
-    y += Math.min(ctxLines.length, 10) * 18 + 16;
   }, [question, satAngle, drawMode, strokes, diffX]);
 
   // Convert a pointer event to canvas-space coords
@@ -1517,19 +1527,19 @@ function QuestionPanel({
       stroke_count: strokes.length,
       total_stroke_points: strokes.reduce((sum, stroke) => sum + stroke.length, 0),
       draw_mode: drawMode,
-      context_open: showContext,
+      context_open: false,
       sat_angle: isSatellite ? satAngle : null,
       diff_x: isDiff ? diffX : null,
       updated_at: Date.now(),
     });
-  }, [segmentId, question.id, question.kind, part, strokes, drawMode, showContext, satAngle, diffX, isSatellite, isDiff, onActivitySnapshot]);
+  }, [segmentId, question.id, question.kind, part, strokes, drawMode, satAngle, diffX, isSatellite, isDiff, onActivitySnapshot]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: "easeOut" }}
-      className="flex flex-col flex-1 gap-3 min-h-0"
+      className="flex flex-col gap-3 lg:flex-1 lg:min-h-0"
     >
       <div className="surface-panel shrink-0 rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm">
         <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
@@ -1552,33 +1562,11 @@ function QuestionPanel({
               {displayedQuestion}
             </h2>
           </div>
-
-          <button
-            onClick={() => setShowContext(!showContext)}
-            className="btn-secondary shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium"
-          >
-            {showContext ? "Hide context" : "View context"}
-          </button>
         </div>
-
-        <AnimatePresence initial={false}>
-          {showContext && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs leading-relaxed text-slate-600 whitespace-pre-line">{question.context}</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
-      <div className="surface-panel flex flex-col flex-1 rounded-2xl border border-slate-200 p-2.5 shadow-sm min-h-0">
-        <div className="mb-2.5 flex items-center justify-between px-1 sm:px-2">
+      <div className="surface-panel flex flex-col rounded-2xl border border-slate-200 p-2.5 shadow-sm lg:flex-1 lg:min-h-0">
+        <div className="mb-2.5 flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between sm:px-2">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Media frame</p>
             <p className="mt-0.5 text-[11px] font-medium text-slate-700">
@@ -1613,7 +1601,6 @@ function QuestionPanel({
               <button
                 onClick={() => {
                   clearStroke();
-                  setShowContext(false);
                   setDrawMode(false);
                   setQ2Part((p) => Math.min(3, p + 1));
                 }}
@@ -1626,7 +1613,7 @@ function QuestionPanel({
           </div>
         </div>
 
-        <div className="relative w-full flex-1 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner flex items-center justify-center min-h-[200px]">
+        <div className="relative flex h-[260px] w-full items-center justify-center overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner sm:h-[320px] lg:h-auto lg:min-h-[200px] lg:flex-1">
           <canvas
             ref={canvasRef}
             width={1280}
@@ -2014,7 +2001,6 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       questionId: nextQ.id,
       question: nextQ.id === 2 ? getQ2PartText((extra?.part as number) || 1) : nextQ.question,
       kind: nextQ.kind,
-      context: nextQ.context,
       eventId,
       ...(extra || {}),
     };
@@ -2312,6 +2298,11 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     inProgressRef.current.clear();
   }, [activeQuestionIdx]);
 
+  const skipIntroduction = useCallback(() => {
+    introEndedAtRef.current = Date.now();
+    setIsIntroductionPhase(false);
+  }, [setIsIntroductionPhase]);
+
   // Navigates to next question (agent announcement comes from the auto-visible effect below).
   const navigateToNext = useCallback(() => {
     const currentIdx = QUESTIONS.findIndex(q => q.id === question.id);
@@ -2390,35 +2381,51 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }
 
   return (
-    <div className={`relative flex flex-col bg-slate-50 ${isIntroductionPhase ? "min-h-screen" : "h-[100dvh] overflow-hidden"}`}>
+    <div className={`relative flex min-h-screen flex-col bg-slate-50 ${isIntroductionPhase ? "" : "lg:h-[100dvh] lg:overflow-hidden"}`}>
       <FocusCountdownOverlay value={focusCountdown} />
 
       <header className="surface-panel sticky top-0 z-40 shrink-0 border-b border-slate-200 shadow-sm">
-        <div className="px-3 py-1.5 lg:px-4 lg:py-2">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-2.5">
+        <div className="px-3 py-2 lg:px-4 lg:py-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-600">
                 <span className="text-[10px] font-bold tracking-widest">AE</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[8px] font-bold uppercase tracking-widest text-slate-500">AESTR Assessment</p>
-                <h1 className="text-base font-semibold leading-tight tracking-tight text-slate-900">
+                <h1 className="text-sm font-semibold leading-tight tracking-tight text-slate-900 sm:text-base">
                   University Admission Screening
                 </h1>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <SignalBadge label="Candidate" value={name} />
-              <SignalBadge label="Sequence" value={`#${candidateSequence}`} />
-              <SignalBadge
-                label="Camera"
-                value={cameraReady ? "Ready" : "Unavailable"}
-                tone={cameraReady ? "live" : "warning"}
-              />
-              <SignalBadge label="Mic" value="Live" tone="live" />
+            <div className="flex shrink-0 flex-col items-end gap-1 sm:hidden">
+              <div className="text-right">
+                <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400">Candidate</p>
+                <p className="max-w-[7.5rem] truncate text-[11px] font-semibold text-slate-700">{name}</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold text-slate-700 shadow-sm">
+                  #{candidateSequence}
+                </div>
+                <Timer minutes={10} onEnd={() => setEnded(true)} compact />
+              </div>
+            </div>
+
+            <div className="hidden sm:block sm:w-auto sm:shrink-0">
               <Timer minutes={10} onEnd={() => setEnded(true)} />
             </div>
+          </div>
+
+          <div className="mt-2 hidden flex-wrap gap-1.5 sm:flex">
+            <SignalBadge label="Candidate" value={name} />
+            <SignalBadge label="Sequence" value={`#${candidateSequence}`} />
+            <SignalBadge
+              label="Camera"
+              value={cameraReady ? "Ready" : "Unavailable"}
+              tone={cameraReady ? "live" : "warning"}
+            />
+            <SignalBadge label="Mic" value="Live" tone="live" />
           </div>
 
           {!isIntroductionPhase && (
@@ -2447,7 +2454,16 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               animate={{ opacity: 1, y: 0 }}
               className="surface-panel rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200"
             >
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Interview introduction</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Interview introduction</p>
+                <button
+                  type="button"
+                  onClick={skipIntroduction}
+                  className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-medium"
+                >
+                  Skip intro
+                </button>
+              </div>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 AESTR Admission Screening Interview
               </h2>
@@ -2528,9 +2544,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
           </div>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col overflow-hidden p-3 lg:p-4 min-h-0">
-          <div className="mx-auto flex h-full w-full max-w-[90rem] min-h-0 flex-col gap-4 xl:flex-row">
-            <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-1 flex-col overflow-y-auto p-3 lg:overflow-hidden lg:p-4 lg:min-h-0">
+          <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-4 lg:h-full lg:min-h-0 xl:flex-row">
+            <section className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
               <AnimatePresence mode="wait">
                 <QuestionPanel
                   key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
@@ -2545,6 +2561,19 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                   }}
                 />
               </AnimatePresence>
+
+              <div className="surface-panel flex h-[230px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 shadow-sm xl:hidden">
+                <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50/50 px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-700">Live conversation log</p>
+                  </div>
+                  <div className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+                    {transcript.length} entries
+                  </div>
+                </div>
+                <AssessmentTranscriptView entries={transcript} />
+              </div>
 
               {!frozen && activeQuestionIdx < QUESTIONS.length - 1 && !(question.id === 2 && q2Part < 3) && (
                 <div className="shrink-0 pt-2 pb-2">
@@ -2601,32 +2630,32 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               )}
             </section>
 
-            <aside className="flex w-full shrink-0 flex-col gap-3 min-h-0 xl:w-[300px]">
-              <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="surface-panel rounded-2xl border border-slate-200 p-3 shadow-sm">
+            <aside className="flex w-full shrink-0 flex-col gap-3 xl:w-[300px] xl:min-h-0">
+              <div className="grid shrink-0 grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="surface-panel rounded-2xl border border-slate-200 p-2.5 shadow-sm">
                   <div className="flex items-center gap-3">
                     <AssessmentAvatar state={ended ? "ended" : avatarState.human} tone="human" label="YOU" />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{name}</p>
                       <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                        Candidate channel
+                        Candidate
                       </p>
-                      <p className="mt-1 text-xs text-slate-600">
+                      <p className="mt-1 text-[11px] text-slate-600">
                         {stateLabel[ended ? "ended" : avatarState.human]}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="surface-panel rounded-2xl border border-slate-200 p-3 shadow-sm">
+                <div className="surface-panel rounded-2xl border border-slate-200 p-2.5 shadow-sm">
                   <div className="flex items-center gap-3">
                     <AssessmentAvatar state={ended ? "ended" : avatarState.ai} tone="ai" label="AI" />
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900">AESTR Interviewer</p>
                       <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                        Evaluation channel
+                        Evaluation
                       </p>
-                      <p className="mt-1 text-xs text-slate-600">
+                      <p className="mt-1 text-[11px] text-slate-600">
                         {stateLabel[ended ? "ended" : avatarState.ai]}
                       </p>
                     </div>
@@ -2634,7 +2663,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 </div>
               </div>
 
-              <div className="surface-panel flex h-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+              <div className="hidden h-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 shadow-sm xl:flex">
                 <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50/50 px-4 py-3">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Transcript</p>
