@@ -111,8 +111,9 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
                 "Ask for a spoken explanation after the question text. "
                 "Do NOT mention drawing or 'Draw trajectory'. After a reasonable verbal answer (and at most 2 short follow-ups), and only once they are done speaking, tell them to click Next Part.\n"
                 "• When Part 2 or Part 3 is visible: they use the INTERACTIVE SATELLITE CANVAS. "
-                "Read that part's question text directly, tell them to draw their answer with Draw trajectory / drawing controls, then wait silently. "
-                "After they draw, tell them to click Next Part (part 2) or Submit & Next (part 3 only). "
+                "Read that part's question text directly. The student must use the canvas to draw the trajectory and briefly explain why. "
+                "If they only draw and do not explain, ask for one short verbal explanation, then wait silently. "
+                "After they draw and briefly explain, tell them to click Next Part (part 2) or Submit & Next (part 3 only). "
                 "Do NOT reveal answers or partial hints. Do NOT conclude the interview between parts.\n"
             )
         if kind == "differentiability":
@@ -186,12 +187,15 @@ You are given:
 - the transcript excerpt for just this question or part
 - activity metadata from the live session
 - transcript coverage diagnostics
+- drawing evaluation evidence, if available
 
 Score carefully and do NOT punish the student just because transcription is imperfect.
 If the transcript is sparse but activity metadata strongly suggests the student did respond,
 be conservative and set needs_review=true rather than forcing low scores.
 Do not require textbook wording. If the student communicates the core idea correctly,
 even briefly or informally, award meaningful partial credit instead of treating it as a fail.
+If the student gives a concise numeric answer that exactly matches the expected result for this question,
+do not treat brevity alone as lack of understanding.
 Reserve very low scores for answers that are clearly wrong, contradictory, or missing.
 
 Return ONLY valid minified JSON with this exact shape:
@@ -229,6 +233,9 @@ Activity JSON:
 
 Coverage JSON:
 <<<GV_SEGMENT_COVERAGE>>>
+
+Drawing Evidence JSON:
+<<<GV_SEGMENT_DRAWING>>>
 """
 
 AUDIO_FALLBACK_PROMPT = """You are grading one interview question segment.
@@ -238,6 +245,8 @@ The transcript may be incomplete or missing. Do not force zero scores just becau
 If the audio is still too weak to grade confidently, set needs_review=true.
 Do not require textbook wording. If the student communicates the core idea correctly,
 even briefly or informally, award meaningful partial credit instead of treating it as a fail.
+If the student gives a concise numeric answer that exactly matches the expected result for this question,
+do not treat brevity alone as lack of understanding.
 Reserve very low scores for answers that are clearly wrong, contradictory, or missing.
 
 Return ONLY valid minified JSON with this exact shape:
@@ -275,6 +284,9 @@ Activity JSON:
 
 Coverage JSON:
 <<<GV_SEGMENT_COVERAGE>>>
+
+Drawing Evidence JSON:
+<<<GV_SEGMENT_DRAWING>>>
 """
 
 TRANSCRIPTION_PROMPT = """Transcribe this short interview microphone recording faithfully.
@@ -622,6 +634,9 @@ async def entrypoint(ctx: JobContext):
                 "audio_available": bool(audio_base64),
             },
         }
+        drawing_evaluation = _evaluate_q2_drawing(segment_key, evidence_activity)
+        if drawing_evaluation:
+            evidence_activity["drawing_evaluation"] = drawing_evaluation
 
         if transcript_excerpt.strip():
             await _upsert_question_snapshot(
@@ -671,6 +686,11 @@ async def entrypoint(ctx: JobContext):
             "needs_review": bool(scored.get("needs_review")) or not has_scored_signal,
             "activity_json": evidence_activity,
         }
+        if scored.get("drawing_evaluation"):
+            snapshot["activity_json"] = {
+                **evidence_activity,
+                "drawing_evaluation": scored.get("drawing_evaluation"),
+            }
         if academic_signal:
             snapshot["academic"] = scored.get("academic")
             question_score_value = _derive_question_score_value(scored.get("academic"))
@@ -957,7 +977,7 @@ async def entrypoint(ctx: JobContext):
             if kind == "satellite" and qid == 2:
                 if part_num in (2, 3):
                     extra_hints.append(
-                        "For this screen only: explicitly tell them to use the Draw Trajectory / drawing controls and draw their answer on the canvas."
+                        "For this screen only: explicitly tell them to use the Draw Trajectory / drawing controls, draw their answer on the canvas, and briefly explain why that path follows."
                     )
                 elif part_num == 1:
                     extra_hints.append(
@@ -978,7 +998,10 @@ async def entrypoint(ctx: JobContext):
                     "If they stay silent, ask only one neutral prompt. After that, "
                 )
             elif qid == 2 and part_num in (2, 3):
-                interaction_line = "Do NOT cross-question. After they have drawn on the canvas, "
+                interaction_line = (
+                    "Do NOT cross-question. Let them draw on the canvas and briefly explain their drawing. "
+                    "If they only draw and say nothing, ask one short neutral prompt requesting a brief explanation. After that, "
+                )
             else:
                 interaction_line = (
                     "After the student answers, do at most 2 short interrogative follow-up questions. "
@@ -1305,6 +1328,357 @@ def _insufficient_segment_result(summary: str) -> dict:
     }
 
 
+def _segment_question_id(question_key: str) -> int | None:
+    match = re.match(r"Q(\d+)", str(question_key or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _student_only_excerpt_text(transcript_excerpt: str) -> str:
+    matches = re.findall(r"Student:\s*(.+)", transcript_excerpt or "", flags=re.IGNORECASE)
+    cleaned = [_clean_transcribed_text(match) for match in matches]
+    parts = [part for part in cleaned if part]
+    if parts:
+        return " ".join(parts)
+    return _clean_transcribed_text(transcript_excerpt)
+
+
+def _build_concise_numeric_recovery(question_key: str, transcript_excerpt: str) -> dict | None:
+    qid = _segment_question_id(question_key)
+    if qid not in {4, 5}:
+        return None
+
+    student_text = _student_only_excerpt_text(transcript_excerpt)
+    normalized = re.sub(r"\s+", " ", student_text.lower()).strip()
+    if not normalized:
+        return None
+
+    if qid == 4:
+        matched = bool(re.search(r"\b(12|twelve)\b", normalized))
+        if not matched:
+            return None
+        has_reasoning = any(token in normalized for token in ("edge", "edges", "painted", "face", "faces", "corner", "corners", "middle"))
+        return {
+            "academic": {
+                "correctness": 9.5,
+                "understanding": 7.0 if has_reasoning else 6.2,
+                "reasoning_depth": 6.2 if has_reasoning else 5.0,
+            },
+            "personality": {},
+            "summary": "Concise answer matched the correct numeric result for the painted-cube question.",
+            "needs_review": False,
+            "grading_mode": "numeric_recovery",
+        }
+
+    matched = bool(re.search(r"\b(17|seventeen)\b", normalized))
+    if not matched:
+        return None
+    has_reasoning = any(token in normalized for token in ("minute", "minutes", "bridge", "torch", "return", "returns", "cross", "total"))
+    return {
+        "academic": {
+            "correctness": 9.5,
+            "understanding": 7.0 if has_reasoning else 6.2,
+            "reasoning_depth": 6.2 if has_reasoning else 5.0,
+        },
+        "personality": {},
+        "summary": "Concise answer matched the correct minimum-time result for the bridge-crossing question.",
+        "needs_review": False,
+        "grading_mode": "numeric_recovery",
+    }
+
+
+def _apply_concise_numeric_recovery(question_key: str, transcript_excerpt: str, payload: dict | None) -> dict:
+    base = dict(payload) if isinstance(payload, dict) else {}
+    recovery = _build_concise_numeric_recovery(question_key, transcript_excerpt)
+    if not recovery:
+        return base
+
+    current_score = _derive_question_score_value(base.get("academic"))
+    recovery_score = _derive_question_score_value(recovery.get("academic"))
+    if recovery_score is None:
+        return base
+    if current_score is not None and current_score >= max(60.0, recovery_score - 2):
+        return base
+
+    merged = dict(base)
+    merged["academic"] = recovery["academic"]
+    if not str(merged.get("summary") or "").strip():
+        merged["summary"] = recovery["summary"]
+    existing_mode = str(merged.get("grading_mode") or "").strip()
+    merged["grading_mode"] = f"{existing_mode}+numeric_recovery" if existing_mode else "numeric_recovery"
+    merged["needs_review"] = bool(merged.get("needs_review"))
+    return merged
+
+
+def _segment_part_id(question_key: str) -> int | None:
+    match = re.search(r"-P(\d+)", str(question_key or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _vector_length(vector: dict | None) -> float:
+    if not isinstance(vector, dict):
+        return 0.0
+    try:
+        return math.hypot(float(vector.get("x") or 0.0), float(vector.get("y") or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _normalize_vector(vector: dict | None) -> dict | None:
+    if not isinstance(vector, dict):
+        return None
+    try:
+        x = float(vector.get("x") or 0.0)
+        y = float(vector.get("y") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    length = math.hypot(x, y)
+    if length <= 1e-6:
+        return None
+    return {"x": x / length, "y": y / length}
+
+
+def _dot(a: dict | None, b: dict | None) -> float:
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return 0.0
+    try:
+        return float(a.get("x") or 0.0) * float(b.get("x") or 0.0) + float(a.get("y") or 0.0) * float(b.get("y") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _distance(a: dict | None, b: dict | None) -> float:
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return float("inf")
+    try:
+        return math.hypot(float(a.get("x") or 0.0) - float(b.get("x") or 0.0), float(a.get("y") or 0.0) - float(b.get("y") or 0.0))
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def _line_deviation(points: list[dict], origin: dict, direction: dict) -> float:
+    denom = max(_vector_length(direction), 1e-6)
+    max_deviation = 0.0
+    ox = float(origin.get("x") or 0.0)
+    oy = float(origin.get("y") or 0.0)
+    dx = float(direction.get("x") or 0.0)
+    dy = float(direction.get("y") or 0.0)
+    for point in points:
+        try:
+            px = float(point.get("x") or 0.0)
+            py = float(point.get("y") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        max_deviation = max(max_deviation, abs((px - ox) * dy - (py - oy) * dx) / denom)
+    return round(max_deviation, 4)
+
+
+def _extract_q2_drawing_artifact(activity_json: dict | None, question_key: str) -> dict | None:
+    if _segment_question_id(question_key) != 2 or _segment_part_id(question_key) not in {2, 3}:
+        return None
+    activity = activity_json if isinstance(activity_json, dict) else {}
+    latest = activity.get("latest_interaction") if isinstance(activity.get("latest_interaction"), dict) else {}
+    artifact = latest.get("drawing_artifact") if isinstance(latest.get("drawing_artifact"), dict) else {}
+    return artifact if artifact else None
+
+
+def _evaluate_q2_drawing(question_key: str, activity_json: dict | None) -> dict | None:
+    artifact = _extract_q2_drawing_artifact(activity_json, question_key)
+    if not artifact:
+        return None
+
+    try:
+        part = _segment_part_id(question_key)
+        strokes = artifact.get("stroke_paths") if isinstance(artifact.get("stroke_paths"), list) else []
+        satellite_position = artifact.get("satellite_position") if isinstance(artifact.get("satellite_position"), dict) else None
+        orbit_center = artifact.get("orbit_center") if isinstance(artifact.get("orbit_center"), dict) else None
+        expected_inward = _normalize_vector(artifact.get("expected_inward_unit"))
+        expected_tangent = _normalize_vector(artifact.get("expected_tangent_unit"))
+        if not strokes or not satellite_position or not orbit_center:
+            return None
+
+        candidate_strokes: list[list[dict]] = []
+        for stroke in strokes:
+            if not isinstance(stroke, list):
+                continue
+            cleaned = [point for point in stroke if isinstance(point, dict) and "x" in point and "y" in point]
+            if len(cleaned) >= 2:
+                candidate_strokes.append(cleaned)
+        if not candidate_strokes:
+            return None
+
+        primary = max(
+            candidate_strokes,
+            key=lambda stroke: (
+                len(stroke),
+                sum(_distance(stroke[idx - 1], stroke[idx]) for idx in range(1, len(stroke))),
+            ),
+        )
+        nearest_index = min(range(len(primary)), key=lambda idx: _distance(primary[idx], satellite_position))
+        nearest_distance = _distance(primary[nearest_index], satellite_position)
+        start_point = satellite_position
+        segment = primary[nearest_index:] if nearest_index < len(primary) - 1 else list(reversed(primary[: nearest_index + 1]))
+        if len(segment) < 2:
+            return {
+                "usable": False,
+                "verdict": "ambiguous",
+                "confidence": 0.0,
+                "reason": "Drawing path was too short to evaluate.",
+            }
+
+        endpoint = max(segment[1:], key=lambda point: _distance(point, satellite_position))
+        observed_vector = {
+            "x": float(endpoint.get("x") or 0.0) - float(start_point.get("x") or 0.0),
+            "y": float(endpoint.get("y") or 0.0) - float(start_point.get("y") or 0.0),
+        }
+        observed_unit = _normalize_vector(observed_vector)
+        path_length = _vector_length(observed_vector)
+        if observed_unit is None or path_length < 0.05:
+            return {
+                "usable": False,
+                "verdict": "ambiguous",
+                "confidence": 0.0,
+                "reason": "Drawing path was too short to evaluate.",
+            }
+
+        inward_alignment = _dot(observed_unit, expected_inward)
+        tangent_alignment = _dot(observed_unit, expected_tangent)
+        center_distance_start = _distance(start_point, orbit_center)
+        center_distance_end = _distance(endpoint, orbit_center)
+        deviation = _line_deviation(segment, start_point, observed_unit)
+        moved_toward_center = center_distance_end < center_distance_start - 0.03
+        stayed_tangent_like = abs(inward_alignment) < 0.35 and abs(center_distance_end - center_distance_start) < 0.12
+        scribbly = deviation > 0.16
+
+        if part == 2:
+            if inward_alignment >= 0.82 and moved_toward_center and not scribbly:
+                verdict = "correct"
+                confidence = min(1.0, round((inward_alignment + max(0.0, center_distance_start - center_distance_end)) / 1.6, 3))
+                reason = "Drawing matched an inward fall toward the central body."
+            elif tangent_alignment >= 0.7 or inward_alignment < 0.25 or not moved_toward_center:
+                verdict = "incorrect"
+                confidence = min(1.0, round(max(tangent_alignment, 1 - max(inward_alignment, 0.0)), 3))
+                reason = "Drawing did not move inward toward the central body when forward velocity became zero."
+            else:
+                verdict = "ambiguous"
+                confidence = round(max(inward_alignment, 0.0), 3)
+                reason = "Drawing evidence was not clear enough to confirm the expected inward path."
+        else:
+            if tangent_alignment >= 0.82 and stayed_tangent_like and not scribbly:
+                verdict = "correct"
+                confidence = min(1.0, round((tangent_alignment + (1 - abs(inward_alignment))) / 2, 3))
+                reason = "Drawing matched a straight tangential path after gravity was removed."
+            elif inward_alignment >= 0.62 or tangent_alignment < 0.2:
+                verdict = "incorrect"
+                confidence = min(1.0, round(max(inward_alignment, 1 - max(tangent_alignment, 0.0)), 3))
+                reason = "Drawing did not follow the expected tangential straight-line motion."
+            else:
+                verdict = "ambiguous"
+                confidence = round(max(tangent_alignment, 0.0), 3)
+                reason = "Drawing evidence was not clear enough to confirm the expected tangential path."
+
+        return {
+            "usable": verdict in {"correct", "incorrect"},
+            "verdict": verdict,
+            "confidence": confidence,
+            "reason": reason,
+            "alignment_inward": round(inward_alignment, 3),
+            "alignment_tangent": round(tangent_alignment, 3),
+            "path_length": round(path_length, 3),
+            "nearest_distance_to_satellite": round(nearest_distance, 3),
+            "line_deviation": deviation,
+            "stroke_count": len(candidate_strokes),
+            "total_points": int(artifact.get("total_points") or 0),
+        }
+    except Exception as exc:
+        logger.warning("drawing evaluation failed for %s: %s", question_key, exc)
+        return None
+
+
+def _blend_academic_metrics(primary: dict | None, secondary: dict | None, *, primary_weight: float = 0.74) -> dict:
+    merged: dict[str, float] = {}
+    for key in ("correctness", "understanding", "reasoning_depth"):
+        primary_value = _metric_optional(primary or {}, key) if isinstance(primary, dict) else None
+        secondary_value = _metric_optional(secondary or {}, key) if isinstance(secondary, dict) else None
+        if primary_value is None and secondary_value is None:
+            continue
+        if primary_value is None:
+            merged[key] = round(float(secondary_value), 2)
+            continue
+        if secondary_value is None:
+            merged[key] = round(float(primary_value), 2)
+            continue
+        merged[key] = round(float(primary_value) * primary_weight + float(secondary_value) * (1 - primary_weight), 2)
+    return merged
+
+
+def _build_q2_drawing_recovery(question_key: str, activity_json: dict | None, transcript_excerpt: str) -> tuple[dict | None, dict | None]:
+    evaluation = _evaluate_q2_drawing(question_key, activity_json)
+    if not evaluation:
+        return None, None
+
+    student_text = _student_only_excerpt_text(transcript_excerpt)
+    has_explanation = len(student_text.split()) >= 6
+    verdict = str(evaluation.get("verdict") or "ambiguous")
+    confidence = float(evaluation.get("confidence") or 0.0)
+    if verdict == "correct" and confidence >= 0.7:
+        return (
+            {
+                "academic": {
+                    "correctness": 9.3,
+                    "understanding": 7.4 if has_explanation else 6.6,
+                    "reasoning_depth": 7.0 if has_explanation else 5.9,
+                },
+                "personality": {},
+                "summary": str(evaluation.get("reason") or "Drawing matched the expected trajectory."),
+                "needs_review": False,
+                "grading_mode": "drawing_geometry",
+            },
+            evaluation,
+        )
+    if verdict == "incorrect" and confidence >= 0.68:
+        return (
+            {
+                "academic": {
+                    "correctness": 2.4,
+                    "understanding": 3.2 if has_explanation else 2.8,
+                    "reasoning_depth": 3.0 if has_explanation else 2.4,
+                },
+                "personality": {},
+                "summary": str(evaluation.get("reason") or "Drawing did not match the expected trajectory."),
+                "needs_review": False,
+                "grading_mode": "drawing_geometry",
+            },
+            evaluation,
+        )
+    return None, evaluation
+
+
+def _apply_q2_drawing_recovery(question_key: str, activity_json: dict | None, transcript_excerpt: str, payload: dict | None) -> tuple[dict, dict | None]:
+    base = dict(payload) if isinstance(payload, dict) else {}
+    recovery, evaluation = _build_q2_drawing_recovery(question_key, activity_json, transcript_excerpt)
+    if not recovery:
+        return base, evaluation
+
+    merged = dict(base)
+    merged["academic"] = _blend_academic_metrics(recovery.get("academic"), base.get("academic"), primary_weight=0.76)
+    if not str(merged.get("summary") or "").strip():
+        merged["summary"] = recovery.get("summary", "")
+    existing_mode = str(merged.get("grading_mode") or "").strip()
+    merged["grading_mode"] = f"{existing_mode}+drawing_geometry" if existing_mode else "drawing_geometry"
+    merged["needs_review"] = bool(merged.get("needs_review")) and not bool(recovery.get("academic"))
+    return merged, evaluation
+
+
 def _derive_question_score_value(academic: dict | None) -> float | None:
     if not isinstance(academic, dict):
         return None
@@ -1402,6 +1776,11 @@ def _compute_segment_coverage(
     live_student_chars = sum(len(line.split("Student:", 1)[-1].strip()) for line in live_lines if "Student:" in line)
     audio_student_chars = len(audio_transcript.strip())
     activity = activity_json if isinstance(activity_json, dict) else {}
+    latest_interaction = activity.get("latest_interaction") if isinstance(activity.get("latest_interaction"), dict) else {}
+    drawing_artifact = latest_interaction.get("drawing_artifact") if isinstance(latest_interaction.get("drawing_artifact"), dict) else {}
+    is_q2_drawing = latest_interaction.get("question_id") == 2 and latest_interaction.get("part") in (2, 3)
+    drawing_points = int(drawing_artifact.get("total_points") or 0) if drawing_artifact else 0
+    meaningful_drawing = bool(is_q2_drawing and latest_interaction.get("has_drawing") and drawing_points >= 6)
     speaking_ms = float(activity.get("student_speaking_ms") or 0)
     student_spoke = bool(activity.get("student_spoke")) or speaking_ms >= 1200
     score = 0.0
@@ -1415,6 +1794,8 @@ def _compute_segment_coverage(
         score += 0.20
     if audio_student_chars >= 24:
         score += 0.20
+    if meaningful_drawing:
+        score += 0.35
     confidence = min(1.0, round(score, 3))
     return {
         "student_turns": len(student_lines),
@@ -1425,10 +1806,13 @@ def _compute_segment_coverage(
         "audio_student_chars": audio_student_chars,
         "student_spoke": student_spoke,
         "student_speaking_ms": speaking_ms,
+        "meaningful_drawing": meaningful_drawing,
+        "drawing_points": drawing_points,
         "confidence": confidence,
-        "weak_transcript": confidence < 0.55,
+        "weak_transcript": confidence < (0.4 if meaningful_drawing else 0.55),
         "likely_capture_failure": student_spoke
         and max(student_chars, live_student_chars, audio_student_chars) < 4
+        and not meaningful_drawing
         and speaking_ms >= 2500,
     }
 
@@ -1581,9 +1965,17 @@ async def _grade_question_segment(
 ) -> dict:
     transcript_excerpt = transcript_excerpt.strip()
     needs_review = bool(coverage.get("likely_capture_failure"))
+    drawing_signal = bool(coverage.get("meaningful_drawing"))
     prefer_audio = bool(coverage.get("weak_transcript")) and bool(audio_base64 and audio_mime_type)
-    if not transcript_excerpt and not (audio_base64 and audio_mime_type):
+    if not transcript_excerpt and not (audio_base64 and audio_mime_type) and not drawing_signal:
         return _insufficient_segment_result("Insufficient capture data for reliable automatic grading.")
+    drawing_evidence = _evaluate_q2_drawing(question_key, activity_json)
+    if not transcript_excerpt and not (audio_base64 and audio_mime_type) and drawing_signal:
+        recovery_only, recovery_eval = _apply_q2_drawing_recovery(question_key, activity_json, transcript_excerpt, None)
+        if recovery_eval and "drawing_evaluation" not in recovery_only:
+            recovery_only["drawing_evaluation"] = recovery_eval
+        if _has_any_grade_signal(recovery_only):
+            return recovery_only
     prompt = _render_prompt(
         QUESTION_GRADING_PROMPT,
         {
@@ -1593,6 +1985,7 @@ async def _grade_question_segment(
             "<<<GV_SEGMENT_TRANSCRIPT>>>": transcript_excerpt or "[no transcript captured]",
             "<<<GV_SEGMENT_ACTIVITY>>>": activity_json or {},
             "<<<GV_SEGMENT_COVERAGE>>>": coverage,
+            "<<<GV_SEGMENT_DRAWING>>>": drawing_evidence or {},
         },
     )
 
@@ -1602,6 +1995,10 @@ async def _grade_question_segment(
             normalized = _normalize_segment_grade_payload(parsed)
             normalized["grading_mode"] = "transcript"
             normalized["needs_review"] = bool(normalized.get("needs_review")) or needs_review
+            normalized = _apply_concise_numeric_recovery(question_key, transcript_excerpt, normalized)
+            normalized, drawing_evaluation = _apply_q2_drawing_recovery(question_key, activity_json, transcript_excerpt, normalized)
+            if drawing_evaluation:
+                normalized["drawing_evaluation"] = drawing_evaluation
             if _has_any_grade_signal(normalized):
                 return normalized
             logger.info("segment transcript grading returned no usable signal for %s", question_key)
@@ -1619,6 +2016,7 @@ async def _grade_question_segment(
                     "<<<GV_SEGMENT_TRANSCRIPT>>>": transcript_excerpt or "[no transcript captured]",
                     "<<<GV_SEGMENT_ACTIVITY>>>": activity_json or {},
                     "<<<GV_SEGMENT_COVERAGE>>>": coverage,
+                    "<<<GV_SEGMENT_DRAWING>>>": drawing_evidence or {},
                 },
             )
             audio_bytes = base64.b64decode(audio_base64)
@@ -1626,11 +2024,22 @@ async def _grade_question_segment(
             normalized = _normalize_segment_grade_payload(parsed)
             normalized["grading_mode"] = "audio_fallback"
             normalized["needs_review"] = bool(normalized.get("needs_review")) or needs_review
+            normalized = _apply_concise_numeric_recovery(question_key, transcript_excerpt, normalized)
+            normalized, drawing_evaluation = _apply_q2_drawing_recovery(question_key, activity_json, transcript_excerpt, normalized)
+            if drawing_evaluation:
+                normalized["drawing_evaluation"] = drawing_evaluation
             if _has_any_grade_signal(normalized):
                 return normalized
             logger.info("segment audio grading returned no usable signal for %s", question_key)
         except Exception as audio_err:
             logger.warning("segment audio fallback failed for %s: %s", question_key, audio_err)
+
+    recovery = _apply_concise_numeric_recovery(question_key, transcript_excerpt, None)
+    recovery, drawing_evaluation = _apply_q2_drawing_recovery(question_key, activity_json, transcript_excerpt, recovery)
+    if drawing_evaluation:
+        recovery["drawing_evaluation"] = drawing_evaluation
+    if _has_any_grade_signal(recovery):
+        return recovery
 
     return _insufficient_segment_result("Insufficient capture data for reliable automatic grading.")
 

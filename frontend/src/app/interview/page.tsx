@@ -37,6 +37,21 @@ type Question = {
   answer: string;
 };
 
+type DrawingPoint = { x: number; y: number };
+type DrawingUnitVector = { x: number; y: number };
+type SerializedDrawingArtifact = {
+  version: 1;
+  canvas_width: number;
+  canvas_height: number;
+  stroke_paths: DrawingPoint[][];
+  total_points: number;
+  satellite_position: DrawingPoint | null;
+  orbit_center: DrawingPoint | null;
+  expected_inward_unit: DrawingUnitVector | null;
+  expected_tangent_unit: DrawingUnitVector | null;
+  preview_data_url?: string | null;
+};
+
 type QuestionInteractionSnapshot = {
   segment_id: string;
   question_id: number;
@@ -50,6 +65,7 @@ type QuestionInteractionSnapshot = {
   context_open: boolean;
   sat_angle: number | null;
   diff_x: number | null;
+  drawing_artifact: SerializedDrawingArtifact | null;
   updated_at: number;
 };
 
@@ -91,13 +107,80 @@ function buildDefaultInteractionSnapshot(segment: SegmentDescriptor): QuestionIn
     context_open: false,
     sat_angle: null,
     diff_x: null,
+    drawing_artifact: null,
     updated_at: Date.now(),
   };
 }
 
-const Q2_PART_1 = "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.";
-const Q2_PART_2 = "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?";
-const Q2_PART_3 = "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?";
+function roundPoint(value: number, digits = 4) {
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+}
+
+function sampleStrokePoints(points: DrawingPoint[], width: number, height: number, maxPoints = 48) {
+  if (points.length <= maxPoints) {
+    return points.map((point) => ({ x: roundPoint(point.x / width), y: roundPoint(point.y / height) }));
+  }
+  const sampled: DrawingPoint[] = [];
+  for (let index = 0; index < maxPoints; index += 1) {
+    const pointIndex = Math.round((index * (points.length - 1)) / (maxPoints - 1));
+    const point = points[pointIndex];
+    sampled.push({ x: roundPoint(point.x / width), y: roundPoint(point.y / height) });
+  }
+  return sampled;
+}
+
+function serializeSatelliteDrawingArtifact(
+  strokes: DrawingPoint[][],
+  satAngle: number,
+  canvas: HTMLCanvasElement | null,
+): SerializedDrawingArtifact | null {
+  if (!canvas || !strokes.length) return null;
+  const width = canvas.width || 1280;
+  const height = canvas.height || 720;
+  const cx = width / 2;
+  const cy = height / 2;
+  const orbitR = Math.min(width, height) * 0.33;
+  const sx = cx + orbitR * Math.cos(satAngle);
+  const sy = cy + orbitR * Math.sin(satAngle);
+  const tx = -Math.sin(satAngle);
+  const ty = Math.cos(satAngle);
+  const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
+
+  return {
+    version: 1,
+    canvas_width: width,
+    canvas_height: height,
+    stroke_paths: strokes
+      .filter((stroke) => stroke.length > 0)
+      .slice(0, 6)
+      .map((stroke) => sampleStrokePoints(stroke, width, height)),
+    total_points: totalPoints,
+    satellite_position: { x: roundPoint(sx / width), y: roundPoint(sy / height) },
+    orbit_center: { x: roundPoint(cx / width), y: roundPoint(cy / height) },
+    expected_inward_unit: { x: roundPoint(-Math.cos(satAngle)), y: roundPoint(-Math.sin(satAngle)) },
+    expected_tangent_unit: { x: roundPoint(tx), y: roundPoint(ty) },
+  };
+}
+
+function captureCanvasPreviewDataUrl(canvas: HTMLCanvasElement | null) {
+  if (!canvas) return null;
+  try {
+    const preview = document.createElement("canvas");
+    preview.width = 256;
+    preview.height = 144;
+    const ctx = preview.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(canvas, 0, 0, preview.width, preview.height);
+    return preview.toDataURL("image/jpeg", 0.58);
+  } catch {
+    return null;
+  }
+}
+
+const Q2_PART_1 = "Part 1: Explain verbally how a satellite stays in orbit around a celestial body. Discuss the forces acting on it, specifically their directions.";
+const Q2_PART_2 = "Part 2: The satellite is already in orbit at the position shown. If its forward velocity suddenly becomes zero, use the canvas to draw the path it will follow and briefly explain your answer.";
+const Q2_PART_3 = "Part 3: The satellite is already in orbit at the position shown. If the gravitational force acting on it suddenly becomes zero, use the canvas to draw the path it will follow and briefly explain your answer.";
 const getQ2PartText = (part: number) => {
   if (part === 1) return Q2_PART_1;
   if (part === 2) return Q2_PART_2;
@@ -129,9 +212,7 @@ const QUESTIONS: Question[] = [
     id: 2,
     kind: "satellite",
     question:
-      "Part 1: How does a satellite orbit a celestial body? Discuss the forces acting on it, specifically their directions.\n\n"
-      + "Part 2: What path will a satellite follow if its forward velocity suddenly becomes zero?\n\n"
-      + "Part 3: What path will a satellite follow if the gravitational force acting on it suddenly becomes zero?",
+      `${Q2_PART_1}\n\n${Q2_PART_2}\n\n${Q2_PART_3}`,
     context:
       "What is a satellite?\n"
       + "A satellite is an object that moves around a larger celestial body due to gravity.\n"
@@ -1140,8 +1221,8 @@ function QuestionPanel({
       const helper = (() => {
         if (!isQ2) return drawMode ? "Draw the trajectory" : "Drag to explore";
         if (part === 1) return drawMode ? "Draw the force (g) and velocity (v) directions" : "Drag the satellite to set the starting point";
-        if (part === 2) return drawMode ? "Draw the path if forward velocity becomes zero" : "Drag the satellite to set the starting point";
-        return drawMode ? "Draw the path if gravity becomes zero" : "Drag the satellite to set the starting point";
+        if (part === 2) return drawMode ? "Draw the path, then explain briefly why it follows that path" : "Drag to choose the starting orbit position, then draw the path";
+        return drawMode ? "Draw the path, then explain briefly why it follows that path" : "Drag to choose the starting orbit position, then draw the path";
       })();
       ctx.fillText(helper, 18, H - 18);
 
@@ -1530,6 +1611,10 @@ function QuestionPanel({
       context_open: false,
       sat_angle: isSatellite ? satAngle : null,
       diff_x: isDiff ? diffX : null,
+      drawing_artifact:
+        isSatelliteInteractive && part >= 2
+          ? serializeSatelliteDrawingArtifact(strokes, satAngle, canvasRef.current)
+          : null,
       updated_at: Date.now(),
     });
   }, [segmentId, question.id, question.kind, part, strokes, drawMode, satAngle, diffX, isSatellite, isDiff, onActivitySnapshot]);
@@ -1600,7 +1685,6 @@ function QuestionPanel({
             {isSatellite && isQ2 && typeof setQ2Part === "function" && part < 3 && (
               <button
                 onClick={() => {
-                  clearStroke();
                   setDrawMode(false);
                   setQ2Part((p) => Math.min(3, p + 1));
                 }}
@@ -1908,8 +1992,22 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       current.ai_active_since = null;
     }
     segmentMetricsRef.current = current;
-    const latestInteraction =
+    const latestInteractionBase =
       segmentInteractionRef.current.get(segment.segment_id) ?? buildDefaultInteractionSnapshot(segment);
+    const latestInteraction =
+      latestInteractionBase.kind === "satellite" &&
+      latestInteractionBase.part >= 2 &&
+      latestInteractionBase.drawing_artifact
+        ? {
+            ...latestInteractionBase,
+            drawing_artifact: {
+              ...latestInteractionBase.drawing_artifact,
+              preview_data_url:
+                latestInteractionBase.drawing_artifact.preview_data_url ??
+                captureCanvasPreviewDataUrl(pendingCanvasRef.current),
+            },
+          }
+        : latestInteractionBase;
     return {
       segment_id: segment.segment_id,
       question_key: segment.question_key,

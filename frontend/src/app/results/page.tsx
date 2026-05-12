@@ -65,6 +65,18 @@ interface InterviewReport {
     question_score: number | null;
     needs_review: boolean;
     summary?: string | null;
+    activity_json?: {
+      drawing_evaluation?: {
+        verdict?: string;
+        confidence?: number;
+        reason?: string;
+      };
+      latest_interaction?: {
+        drawing_artifact?: {
+          preview_data_url?: string | null;
+        } | null;
+      } | null;
+    } | null;
   }> | null;
 }
 
@@ -400,6 +412,29 @@ function ResultsPageContent() {
                           </div>
                         </div>
                         {item.summary ? <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.summary}</p> : null}
+                        {item.activity_json?.drawing_evaluation ? (
+                          <div className="mt-3 rounded-lg border border-sky-100 bg-sky-50/70 p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-sky-700">Drawing evaluation</p>
+                            <p className="mt-1 text-sm font-medium text-slate-900">
+                              {(item.activity_json.drawing_evaluation.verdict || "review").replaceAll("_", " ")}
+                              {" · "}
+                              {Math.round((num(item.activity_json.drawing_evaluation.confidence, 0) ?? 0) * 100)}% confidence
+                            </p>
+                            {item.activity_json.drawing_evaluation.reason ? (
+                              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                                {item.activity_json.drawing_evaluation.reason}
+                              </p>
+                            ) : null}
+                            {item.activity_json.latest_interaction?.drawing_artifact?.preview_data_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.activity_json.latest_interaction.drawing_artifact.preview_data_url}
+                                alt={`${item.question_key} drawing preview`}
+                                className="mt-3 w-full max-w-xs rounded-lg border border-slate-200 bg-slate-100"
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
