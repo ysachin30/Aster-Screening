@@ -140,6 +140,9 @@ more heavily than small talk in [intro], but the intro still informs communicati
 Do not require textbook wording. If a student's answer is materially correct, concise, or phrased simply,
 score the demonstrated understanding rather than penalizing style.
 Award partial credit generously for answers that capture the core idea with minor omissions.
+For this admissions workflow, be marks-giving: most students who attempt the question, think out loud,
+and show usable understanding should usually land around 6.5-8.5 rather than low scores.
+Use scores below 5 only for blank, contradictory, incoherent, or clearly poor answers.
 Reserve very low scores for answers that are clearly wrong, contradictory, or effectively absent.
 
 ACADEMIC (0-10 each):
@@ -194,7 +197,10 @@ If the transcript is sparse but activity metadata strongly suggests the student 
 be conservative and set needs_review=true rather than forcing low scores.
 Do not require textbook wording. If the student communicates the core idea correctly,
 even briefly or informally, award meaningful partial credit instead of treating it as a fail.
-If the student gives a concise numeric answer that exactly matches the expected result for this question,
+For this admissions workflow, be marks-giving: most attempted answers with visible reasoning or a
+directionally correct core idea should usually score in the 6.5-8.5 range.
+Use scores below 5 only for blank, contradictory, incoherent, or clearly poor answers.
+If the student gives a concise numeric answer that matches or is clearly equivalent to the expected result,
 do not treat brevity alone as lack of understanding.
 Reserve very low scores for answers that are clearly wrong, contradictory, or missing.
 
@@ -245,7 +251,10 @@ The transcript may be incomplete or missing. Do not force zero scores just becau
 If the audio is still too weak to grade confidently, set needs_review=true.
 Do not require textbook wording. If the student communicates the core idea correctly,
 even briefly or informally, award meaningful partial credit instead of treating it as a fail.
-If the student gives a concise numeric answer that exactly matches the expected result for this question,
+For this admissions workflow, be marks-giving: most attempted answers with visible reasoning or a
+directionally correct core idea should usually score in the 6.5-8.5 range.
+Use scores below 5 only for blank, contradictory, incoherent, or clearly poor answers.
+If the student gives a concise numeric answer that matches or is clearly equivalent to the expected result,
 do not treat brevity alone as lack of understanding.
 Reserve very low scores for answers that are clearly wrong, contradictory, or missing.
 
@@ -1365,8 +1374,8 @@ def _build_concise_numeric_recovery(question_key: str, transcript_excerpt: str) 
         return {
             "academic": {
                 "correctness": 9.5,
-                "understanding": 7.0 if has_reasoning else 6.2,
-                "reasoning_depth": 6.2 if has_reasoning else 5.0,
+                    "understanding": 7.4 if has_reasoning else 6.8,
+                    "reasoning_depth": 6.8 if has_reasoning else 5.8,
             },
             "personality": {},
             "summary": "Concise answer matched the correct numeric result for the painted-cube question.",
@@ -1374,15 +1383,19 @@ def _build_concise_numeric_recovery(question_key: str, transcript_excerpt: str) 
             "grading_mode": "numeric_recovery",
         }
 
-    matched = bool(re.search(r"\b(17|seventeen)\b", normalized))
+    matched = bool(
+        re.search(r"\b(17|seventeen)\b", normalized)
+        or "2+1+10+2+2" in normalized
+        or "2 1 10 2 2" in normalized
+    )
     if not matched:
         return None
     has_reasoning = any(token in normalized for token in ("minute", "minutes", "bridge", "torch", "return", "returns", "cross", "total"))
     return {
         "academic": {
             "correctness": 9.5,
-            "understanding": 7.0 if has_reasoning else 6.2,
-            "reasoning_depth": 6.2 if has_reasoning else 5.0,
+            "understanding": 7.4 if has_reasoning else 6.8,
+            "reasoning_depth": 6.8 if has_reasoning else 5.8,
         },
         "personality": {},
         "summary": "Concise answer matched the correct minimum-time result for the bridge-crossing question.",
@@ -1635,8 +1648,8 @@ def _build_q2_drawing_recovery(question_key: str, activity_json: dict | None, tr
             {
                 "academic": {
                     "correctness": 9.3,
-                    "understanding": 7.4 if has_explanation else 6.6,
-                    "reasoning_depth": 7.0 if has_explanation else 5.9,
+                    "understanding": 7.8 if has_explanation else 7.0,
+                    "reasoning_depth": 7.4 if has_explanation else 6.3,
                 },
                 "personality": {},
                 "summary": str(evaluation.get("reason") or "Drawing matched the expected trajectory."),
@@ -1645,18 +1658,18 @@ def _build_q2_drawing_recovery(question_key: str, activity_json: dict | None, tr
             },
             evaluation,
         )
-    if verdict == "incorrect" and confidence >= 0.68:
+    if verdict == "incorrect" and confidence >= 0.82:
         return (
             {
                 "academic": {
-                    "correctness": 2.4,
-                    "understanding": 3.2 if has_explanation else 2.8,
-                    "reasoning_depth": 3.0 if has_explanation else 2.4,
+                    "correctness": 4.6,
+                    "understanding": 5.2 if has_explanation else 4.8,
+                    "reasoning_depth": 4.8 if has_explanation else 4.2,
                 },
                 "personality": {},
-                "summary": str(evaluation.get("reason") or "Drawing did not match the expected trajectory."),
-                "needs_review": False,
-                "grading_mode": "drawing_geometry",
+                "summary": str(evaluation.get("reason") or "Drawing appeared inconsistent with the expected trajectory and should be reviewed."),
+                "needs_review": True,
+                "grading_mode": "drawing_geometry_review",
             },
             evaluation,
         )

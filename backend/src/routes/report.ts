@@ -149,25 +149,25 @@ function deriveRollups(
     };
   }
 
-  const overall_score = 0.55 * academic_score + 0.45 * personality_score;
+  const overall_score = 0.52 * academic_score + 0.48 * personality_score;
   const band: "A" | "B" | "C" | "D" =
-    overall_score >= 85 ? "A" : overall_score >= 70 ? "B" : overall_score >= 55 ? "C" : "D";
-  const severeAcademic = academic_score < 35;
-  const severeCommunication = communication !== null && communication < 3;
-  const severeComprehension = comprehension !== null && comprehension < 3;
-  const clearlyWeakOverall = overall_score < 40;
+    overall_score >= 82 ? "A" : overall_score >= 67 ? "B" : overall_score >= 50 ? "C" : "D";
+  const severeAcademic = academic_score < 28;
+  const severeCommunication = communication !== null && communication < 2.2;
+  const severeComprehension = comprehension !== null && comprehension < 2.2;
+  const clearlyWeakOverall = overall_score < 34;
   const criticalFail = severeAcademic || severeCommunication || severeComprehension || clearlyWeakOverall;
   const shortlist_status: "shortlist" | "borderline" | "reject" = criticalFail
     ? "reject"
-    : options?.partialEvidence
+    : options?.partialEvidence && overall_score < 52
       ? "borderline"
       : "shortlist";
 
   const parts: string[] = [];
-  if (severeAcademic) parts.push("academic below 35");
-  if (severeCommunication) parts.push("communication below 3");
-  if (severeComprehension) parts.push("comprehension below 3");
-  if (clearlyWeakOverall) parts.push("overall below 40");
+  if (severeAcademic) parts.push("academic below 28");
+  if (severeCommunication) parts.push("communication below 2.2");
+  if (severeComprehension) parts.push("comprehension below 2.2");
+  if (clearlyWeakOverall) parts.push("overall below 34");
 
   const decision_reason =
     shortlist_status === "reject"
@@ -241,7 +241,7 @@ function isRollupEligibleQuestionRow(row: any) {
 
 function rowEvidenceWeight(row: any) {
   if (!isRollupEligibleQuestionRow(row)) return 0;
-  return row.needs_review ? 0.35 : 1;
+  return row.needs_review ? 0.6 : 1;
 }
 
 function weightedAverage(values: Array<{ value: number; weight: number }>) {
@@ -405,8 +405,8 @@ function buildQuestionRouteWeight(rows: any[], recovery = false) {
   const total = Math.max(rows.length, eligible.length);
   const coverage = eligible.length / total;
   const reviewPenalty = eligible.filter((row) => row.needs_review).length / eligible.length;
-  const base = recovery ? 0.45 : 0.7;
-  return Number((base + coverage * (recovery ? 0.2 : 0.25) - reviewPenalty * 0.2).toFixed(3));
+  const base = recovery ? 0.62 : 0.78;
+  return Number((base + coverage * (recovery ? 0.18 : 0.22) - reviewPenalty * 0.12).toFixed(3));
 }
 
 function fuseAcademicRoutes(routes: GradingRoute[]) {
@@ -752,8 +752,8 @@ reportRouter.post("/report", async (req, res) => {
     const effectiveAcademic = fuseAcademicRoutes(scoringRoutes);
     const effectivePersonality = fusePersonalityRoutes(scoringRoutes);
     const partialEvidence =
-      availableAcademicMetricCount(effectiveAcademic) < 3 ||
-      availablePersonalityMetricCount(effectivePersonality) < personalityKeys.length ||
+      availableAcademicMetricCount(effectiveAcademic) < 2 ||
+      availablePersonalityMetricCount(effectivePersonality) < 3 ||
       (!scoringRoutes[0].usable && !scoringRoutes[1].usable && scoringRoutes[2].usable);
     const roll = deriveRollupsNullable(effectiveAcademic, effectivePersonality, { partialEvidence });
     const effectiveSummary = deriveDisplaySummary(summary, questionBreakdown);
