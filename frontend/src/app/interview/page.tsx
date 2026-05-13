@@ -935,6 +935,98 @@ function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: nu
   ctx.shadowBlur = 0;
 }
 
+/** Q2 canvas: draw a clear satellite at orbit position; tangent is motion direction along the orbit. */
+function drawQ2SatelliteBody(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  tangentAlongOrbitX: number,
+  tangentAlongOrbitY: number,
+) {
+  const angle = Math.atan2(tangentAlongOrbitY, tangentAlongOrbitX);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+
+  ctx.shadowColor = "rgba(220,200,120,0.45)";
+  ctx.shadowBlur = 14;
+
+  // Solar wings (perpendicular to velocity)
+  ctx.fillStyle = "#0f1a33";
+  ctx.strokeStyle = "rgba(120,160,230,0.55)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.roundRect(-52, -8, 30, 16, 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.roundRect(22, -8, 30, 16, 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Cell grid hint
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 0.6;
+  for (let i = 0; i < 3; i += 1) {
+    const x0 = -50 + i * 9;
+    ctx.beginPath();
+    ctx.moveTo(x0, -6);
+    ctx.lineTo(x0, 6);
+    ctx.stroke();
+    const x1 = 24 + i * 9;
+    ctx.beginPath();
+    ctx.moveTo(x1, -6);
+    ctx.lineTo(x1, 6);
+    ctx.stroke();
+  }
+
+  // Main bus
+  const busGrad = ctx.createLinearGradient(-16, -10, 16, 10);
+  busGrad.addColorStop(0, "#b8c0cc");
+  busGrad.addColorStop(0.45, "#8f98a8");
+  busGrad.addColorStop(1, "#5c6574");
+  ctx.fillStyle = busGrad;
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.roundRect(-18, -11, 36, 22, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Gold foil strip
+  ctx.fillStyle = "rgba(218,165,32,0.55)";
+  ctx.fillRect(-10, -5, 20, 4);
+
+  // Antenna dish
+  ctx.strokeStyle = "rgba(230,235,255,0.85)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.arc(14, -16, 5.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(14, -10.5);
+  ctx.lineTo(10, -4);
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+
+  // Label (world-readable: counter-rotate slightly for readability at common angles)
+  ctx.save();
+  ctx.rotate(-angle * 0.35);
+  ctx.font = "bold 10px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
+  ctx.lineWidth = 2.5;
+  const label = "SAT";
+  ctx.strokeText(label, 0, -18);
+  ctx.fillText(label, 0, -18);
+  ctx.restore();
+
+  ctx.restore();
+}
+
 function QuestionPanel({
   question,
   frozen,
@@ -1197,37 +1289,45 @@ function QuestionPanel({
         ctx.restore();
       }
 
-      if (!hidePresetVectors) {
-        // Gravity — magenta (radial inward)
-        const gx = cx - sx, gy = cy - sy;
+      const canvasQ2Part = question.id === 2 ? (q2Part ?? 1) : 0;
+      const showGravityArrow = canvasQ2Part === 2;
+      const showVelocityArrow = canvasQ2Part === 2 || canvasQ2Part === 3;
+
+      if (showGravityArrow) {
+        const gx = cx - sx;
+        const gy = cy - sy;
         const glen = Math.hypot(gx, gy) || 1;
         drawArrow(ctx, sx, sy, sx + (gx / glen) * 85, sy + (gy / glen) * 85, "#e040fb", "F_g");
-        // Tangential velocity — cyan
+      }
+      if (showVelocityArrow) {
         drawArrow(ctx, sx, sy, sx + tx * 95, sy + ty * 95, "#00d4ff", "v");
       }
 
-      // ── Satellite body — metallic box with gold foil & solar panels ──
-      ctx.save();
-      // Subtle glow
-      ctx.shadowColor = "rgba(220,200,120,0.6)";
-      // ... (rest of the code remains the same)
+      drawQ2SatelliteBody(ctx, sx, sy, tx, ty);
 
       // Bottom-left instruction
       ctx.textAlign = "left";
       ctx.textBaseline = "bottom";
       ctx.font = "13px system-ui";
       ctx.fillStyle = "rgba(255,255,255,0.55)";
-      // Helper copy — bottom left
       const helper = (() => {
-        if (!isQ2) return drawMode ? "Draw the trajectory" : "Drag to explore";
-        if (part === 1) return drawMode ? "Draw the force (g) and velocity (v) directions" : "Drag the satellite to set the starting point";
-        if (part === 2) return drawMode ? "Draw the path, then explain briefly why it follows that path" : "Drag to choose the starting orbit position, then draw the path";
-        return drawMode ? "Draw the path, then explain briefly why it follows that path" : "Drag to choose the starting orbit position, then draw the path";
+        if (question.id !== 2) return drawMode ? "Draw the trajectory" : "Drag to explore";
+        if (canvasQ2Part === 2) {
+          return drawMode
+            ? "Draw the path the satellite follows, then explain briefly in speech."
+            : "Satellite and forces are shown. Enable drawing mode, then sketch the path.";
+        }
+        if (canvasQ2Part === 3) {
+          return drawMode
+            ? "Draw the straight-line path after gravity disappears, then explain briefly in speech."
+            : "Satellite and velocity are shown. Enable drawing mode, then sketch the path.";
+        }
+        return drawMode ? "Draw the trajectory" : "Drag to explore";
       })();
       ctx.fillText(helper, 18, H - 18);
 
-      // Legend — clean glass panel
-      if (!hidePresetVectors) {
+      // Legend — Q2 part 2: both vectors; part 3: velocity only (gravity “off” in the prompt)
+      if (showGravityArrow) {
         ctx.fillStyle = "rgba(0,0,8,0.55)";
         ctx.beginPath();
         ctx.roundRect(14, 14, 300, 58, 6);
@@ -1240,13 +1340,22 @@ function QuestionPanel({
         ctx.fillText("● F_g  gravitational force  (radial inward)", 24, 24);
         ctx.fillStyle = "#00d4ff";
         ctx.fillText("● v    tangential velocity  (perpendicular)", 24, 43);
+      } else if (canvasQ2Part === 3) {
+        ctx.fillStyle = "rgba(0,0,8,0.55)";
+        ctx.beginPath();
+        ctx.roundRect(14, 14, 260, 38, 6);
+        ctx.fill();
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.font = "bold 12px system-ui";
+        ctx.fillStyle = "#00d4ff";
+        ctx.fillText("● v    instantaneous velocity  (tangent to orbit)", 24, 24);
       }
 
       // Mode pill — top right
-      const modeLabel = drawMode ? "DRAW MODE" : "DRAG MODE";
+      const modeLabel = drawMode ? "DRAW MODE" : "VIEW";
       const modeCol = drawMode ? "#00d4ff" : "#e0c060";
       ctx.font = "bold 11px system-ui";
-      // ... (rest of the code remains the same)
       const mww = ctx.measureText(modeLabel).width;
       ctx.fillStyle = "rgba(0,0,8,0.65)";
       ctx.beginPath();
@@ -1512,7 +1621,7 @@ function QuestionPanel({
     ctx.font = "bold 18px system-ui";
     const qLines = wrap(question.question, W - 48);
     qLines.forEach((l, i) => ctx.fillText(l, 24, 60 + i * 26));
-  }, [question, satAngle, drawMode, strokes, diffX]);
+  }, [question, q2Part, satAngle, drawMode, strokes, diffX]);
 
   // Convert a pointer event to canvas-space coords
   const pointerToCanvas = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1532,7 +1641,8 @@ function QuestionPanel({
       if (drawMode) {
         drawingRef.current = true;
         setStrokes(prev => [...prev, [p]]);
-      } else {
+      } else if (question.id !== 2) {
+        // Non–Q2 satellite: allow dragging to reposition (Q2 P2/P3 keep a fixed on-orbit satellite).
         draggingRef.current = true;
         const canvas = canvasRef.current!;
         setSatAngle(Math.atan2(p.y - canvas.height / 2, p.x - canvas.width / 2));
@@ -1557,7 +1667,7 @@ function QuestionPanel({
           next[next.length - 1] = [...next[next.length - 1], p];
           return next;
         });
-      } else if (draggingRef.current) {
+      } else if (draggingRef.current && question.id !== 2) {
         const canvas = canvasRef.current!;
         setSatAngle(Math.atan2(p.y - canvas.height / 2, p.x - canvas.width / 2));
       }
@@ -1587,12 +1697,11 @@ function QuestionPanel({
   const isSatelliteInteractive = isSatellite && !isQ2TheoryPart;
   const isInteractive = isSatelliteInteractive || isDiff;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
-  const hidePresetVectors = isQ2;
   const canAdvanceQ2Part = part === 1 ? true : strokes.length > 0;
   const responseGuidance = isSatelliteInteractive
     ? drawMode
       ? "Draw directly on the frame to explain your reasoning before advancing."
-      : "Drag the model to inspect the scenario, then switch to drawing when you are ready."
+      : "The satellite is fixed on the orbit. Enable drawing mode, then sketch your answer path."
     : isDiff
       ? "Drag the point across the curve and describe what happens near the corner."
       : "Speak clearly and structure your answer before continuing.";
@@ -1686,6 +1795,7 @@ function QuestionPanel({
               <button
                 onClick={() => {
                   setDrawMode(false);
+                  setStrokes([]);
                   setQ2Part((p) => Math.min(3, p + 1));
                 }}
                 disabled={frozen || !canAdvanceQ2Part}
@@ -1708,7 +1818,13 @@ function QuestionPanel({
             onPointerCancel={onPointerUp}
             className={
               isSatelliteInteractive
-                ? `absolute inset-0 z-[2] h-full w-full object-contain touch-none ${drawMode ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`
+                ? `absolute inset-0 z-[2] h-full w-full object-contain touch-none ${
+                    drawMode
+                      ? "cursor-crosshair"
+                      : question.id === 2
+                        ? "cursor-default"
+                        : "cursor-grab active:cursor-grabbing"
+                  }`
                 : isDiff
                   ? "absolute inset-0 z-[2] h-full w-full object-contain touch-none cursor-grab active:cursor-grabbing"
                   : "hidden"
