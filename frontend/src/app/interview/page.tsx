@@ -1577,7 +1577,7 @@ function QuestionPanel({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: "easeOut" }}
-      className="flex flex-col gap-3 lg:flex-1 lg:min-h-0"
+      className="flex flex-col gap-3"
     >
       <div className="surface-panel shrink-0 rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm">
         <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
@@ -1641,7 +1641,7 @@ function QuestionPanel({
         )}
       </div>
 
-      <div className="surface-panel flex flex-col rounded-2xl border border-slate-200 p-2.5 shadow-sm lg:flex-1 lg:min-h-0">
+      <div className="surface-panel flex flex-col rounded-2xl border border-slate-200 p-2.5 shadow-sm">
         <div className="mb-2.5 flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between sm:px-2">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Media frame</p>
@@ -1689,7 +1689,7 @@ function QuestionPanel({
           </div>
         </div>
 
-        <div className="relative flex h-[260px] w-full items-center justify-center overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner sm:h-[320px] lg:h-auto lg:min-h-[200px] lg:flex-1">
+        <div className="relative flex h-[220px] w-full items-center justify-center overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-900 shadow-inner sm:h-[280px] lg:h-[300px] xl:h-[320px] 2xl:h-[360px]">
           <canvas
             ref={canvasRef}
             width={1280}
@@ -2532,7 +2532,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }
 
   return (
-    <div className={`relative flex min-h-screen flex-col bg-slate-50 ${isIntroductionPhase ? "" : "lg:h-[100dvh] lg:overflow-hidden"}`}>
+    <div className="relative flex min-h-[100dvh] flex-col bg-slate-50">
       <FocusCountdownOverlay value={focusCountdown} />
 
       <header className="surface-panel sticky top-0 z-40 shrink-0 border-b border-slate-200 shadow-sm">
@@ -2686,9 +2686,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
           </div>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col overflow-y-auto p-3 lg:overflow-hidden lg:p-4 lg:min-h-0">
-          <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-4 lg:h-full lg:min-h-0 xl:flex-row">
-            <section className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
+        <div className="flex flex-1 flex-col overflow-y-auto p-3 pb-6 lg:p-4 lg:pb-8">
+          <div className="mx-auto flex w-full max-w-[90rem] flex-col items-stretch gap-4 xl:flex-row xl:items-start">
+            <section className="flex min-w-0 flex-col gap-3 xl:flex-1">
               <AnimatePresence mode="wait">
                 <QuestionPanel
                   key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
@@ -2778,7 +2778,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
               )}
             </section>
 
-            <aside className="flex w-full shrink-0 flex-col gap-3 xl:w-[300px] xl:min-h-0">
+            <aside className="flex w-full shrink-0 flex-col gap-3 xl:w-[300px]">
               <div className="grid shrink-0 grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
                 <div className="surface-panel rounded-2xl border border-slate-200 p-2.5 shadow-sm">
                   <div className="flex items-center gap-3">
