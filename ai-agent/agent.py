@@ -91,9 +91,9 @@ CRITICAL RULES:
 18. Do not repeat the same follow-up twice in one question. If you have already asked once, wait for the student.
 19. On the FIRST turn of each new question, your entire response must be only the question text itself. Do not add any extra sentence before or after it.
 20. Do not ask any follow-up until the student has spoken in the current question.
-21. Never tell the student to click "Submit & Next" or "Next Part" before they have answered the current verbal question and explained why they chose their option.
+21. Never tell the student to click "Submit & Next" or "Next Part" before they have selected an option and had a chance to explain their reasoning aloud.
 22. Each question is OBJECTIVE with multiple-choice options shown on screen. The student selects one option on screen. Do not read the option labels aloud unless the student explicitly asks you to repeat them.
-23. After dictating the question text, wait for the student to select an option on screen. Do not require a long spoken essay answer for objective questions.
+23. After dictating the question text, wait for the student to select an option on screen, then ask for a brief verbal reason such as "Why did you choose that option?" Do not require a long essay.
 """
 
 def build_instructions(student_name: str, questions: list[dict]) -> str:
@@ -121,7 +121,7 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
             parts.append(
                 f"QUESTION DELIVERY for Q{qid}: This is an objective multiple-choice question. "
                 "Speak only the question text when it opens. The answer options are visible on the student's screen. "
-                "Do not read the options aloud. Wait for them to select one option, then allow them to continue.\n"
+                "Do not read the options aloud. Wait for them to select one option, then ask one short verbal reasoning probe before allowing them to continue.\n"
             )
         if kind == "text" or kind == "gif":
             parts.append(
@@ -1039,12 +1039,12 @@ async def entrypoint(ctx: JobContext):
 
             if qid == 2 and part_num in (1, 2, 3):
                 interaction_line = (
-                    "After the student selects an option, ask at most one short interrogative probe about why they chose it. "
+                    "After the student selects an option or states an answer, ask at most one short interrogative probe about why they chose it. "
                     "If they already explained their choice, do not cross-question. If they stay silent, ask only one neutral prompt. After that, "
                 )
             else:
                 interaction_line = (
-                    "After the student answers, do at most 2 short interrogative follow-up questions. "
+                    "After the student answers or selects an option, ask one short verbal reasoning probe before navigation. "
                     "If they stay silent, ask only one neutral prompt. Then "
                 )
 
@@ -1058,14 +1058,14 @@ async def entrypoint(ctx: JobContext):
                 "Do not say any intro line, label, greeting, screen description, framing sentence, follow-up, or navigation instruction in that first response. "
                 "Do not mention any scenario, accident, diagram, animation, or other context outside the exact question text. "
                 "The student answers by selecting one multiple-choice option on screen. Do not read the option labels aloud. "
-                "After that first response, wait for the student to select an option before giving any navigation instruction. "
+                "After that first response, wait for the student to select an option and explain aloud before giving any navigation instruction. "
                 + interaction_line
                 + nav_line + " "
                 "Never reveal, confirm, paraphrase, or hint the answer or solution. "
                 "Never explain the concept, method, diagram, or next step. "
                 "If the student is stuck, ask only one short neutral prompt and do not explain the problem for them. "
                 "Never restate the question after this first dictation unless the student explicitly asks you to repeat it. "
-                "Do not tell them to click Submit & Next or Next Part before they have answered the current verbal question. "
+                "Do not tell them to click Submit & Next or Next Part before they have selected an option and had a chance to explain aloud. "
                 "Every sentence after the question text must be either an interrogative probe or, only when allowed, a navigation instruction. "
                 "Do NOT end the interview. Do NOT say that the questions are complete, and do NOT say it was a pleasure speaking with the student yet."
                 " After you finish speaking this turn, wait silently — do not repeat the question unless the student asks."
@@ -1622,9 +1622,7 @@ def _grade_from_mcq_selection(
     if not selected or not correct:
         return None
     is_correct = selected == correct
-    reason = str(interaction.get("selected_option_reason") or "").strip()
-    if not reason:
-        reason = _student_only_excerpt_text(transcript_excerpt).strip()
+    reason = _student_only_excerpt_text(transcript_excerpt).strip()
     reason_quality = _estimate_reasoning_quality(reason)
     selected_label = (
         str(interaction.get("selected_option_label") or "").strip()
@@ -1646,7 +1644,7 @@ def _grade_from_mcq_selection(
         "exploratory_thinking": round(6.0 + 1.0 * reason_quality, 2),
         "comprehension": 7.5 if is_correct else 4.0,
     }
-    reason_summary = " Explanation captured." if reason else " No explanation was captured."
+    reason_summary = " Spoken explanation captured." if reason else " No spoken explanation was captured."
     return {
         "academic": academic,
         "personality": personality,
@@ -2049,9 +2047,7 @@ def _compute_segment_coverage(
     meaningful_drawing = bool(is_q2_drawing and latest_interaction.get("has_drawing") and drawing_points >= 6)
     speaking_ms = float(activity.get("student_speaking_ms") or 0)
     selected_option_id = str(latest_interaction.get("selected_option_id") or "").strip()
-    selected_option_reason = str(latest_interaction.get("selected_option_reason") or "").strip()
-    reason_chars = len(selected_option_reason)
-    student_spoke = bool(activity.get("student_spoke")) or speaking_ms >= 1200 or bool(selected_option_id) or reason_chars >= 8
+    student_spoke = bool(activity.get("student_spoke")) or speaking_ms >= 1200 or bool(selected_option_id)
     score = 0.0
     if student_lines:
         score += 0.45
@@ -2067,10 +2063,6 @@ def _compute_segment_coverage(
         score += 0.35
     if selected_option_id:
         score += 0.35
-    if reason_chars >= 8:
-        score += 0.20
-    if reason_chars >= 32:
-        score += 0.15
     confidence = min(1.0, round(score, 3))
     return {
         "student_turns": len(student_lines),
@@ -2083,7 +2075,6 @@ def _compute_segment_coverage(
         "student_speaking_ms": speaking_ms,
         "meaningful_drawing": meaningful_drawing,
         "drawing_points": drawing_points,
-        "selected_option_reason_chars": reason_chars,
         "confidence": confidence,
         "weak_transcript": confidence < (0.4 if meaningful_drawing else 0.55),
         "likely_capture_failure": student_spoke
