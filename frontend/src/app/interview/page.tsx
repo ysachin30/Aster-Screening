@@ -65,6 +65,8 @@ type QuestionInteractionSnapshot = {
   diff_x: number | null;
   drawing_artifact: SerializedDrawingArtifact | null;
   selected_option_id: string | null;
+  selected_option_label: string | null;
+  selected_option_reason: string | null;
   updated_at: number;
 };
 
@@ -108,6 +110,8 @@ function buildDefaultInteractionSnapshot(segment: SegmentDescriptor): QuestionIn
     diff_x: null,
     drawing_artifact: null,
     selected_option_id: null,
+    selected_option_label: null,
+    selected_option_reason: null,
     updated_at: Date.now(),
   };
 }
@@ -904,7 +908,9 @@ function QuestionPanel({
   onActivitySnapshot,
   mcqOptions,
   selectedOptionId,
+  selectedOptionReason,
   onSelectOption,
+  onReasonChange,
 }: {
   question: Question;
   frozen: boolean;
@@ -915,13 +921,15 @@ function QuestionPanel({
   onActivitySnapshot?: (snapshot: QuestionInteractionSnapshot) => void;
   mcqOptions: McqOption[];
   selectedOptionId: string | null;
+  selectedOptionReason: string;
   onSelectOption: (optionId: string) => void;
+  onReasonChange: (reason: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Satellite state (used only when question.kind === "satellite")
   const [satAngle, setSatAngle] = useState(Math.PI / 2); // start at bottom of orbit (opposite position)
   const [drawMode, setDrawMode] = useState(false);
-  // Multiple strokes (needed for Q2 Part 1: draw g and v separately)
+  // Multiple strokes are still supported for any future non-Q2 satellite sketch question.
   const [strokes, setStrokes] = useState<{ x: number; y: number }[][]>([]);
   // Q3: probe x-position in function space (for differentiability canvas)
   const [diffX, setDiffX] = useState(2.5);
@@ -1162,8 +1170,6 @@ function QuestionPanel({
         ctx.restore();
       }
 
-      const canvasQ2Part = question.id === 2 ? (q2Part ?? 1) : 0;
-
       drawQ2SatelliteBody(ctx, sx, sy, tx, ty);
 
       // Bottom-left instruction
@@ -1172,17 +1178,7 @@ function QuestionPanel({
       ctx.font = "13px system-ui";
       ctx.fillStyle = "rgba(255,255,255,0.55)";
       const helper = (() => {
-        if (question.id !== 2) return drawMode ? "Draw the trajectory" : "Drag to explore";
-        if (canvasQ2Part === 2) {
-          return drawMode
-            ? "Draw the path the satellite follows, then explain briefly in speech."
-            : "Satellite is on the orbit. Enable drawing mode, then sketch the path.";
-        }
-        if (canvasQ2Part === 3) {
-          return drawMode
-            ? "Draw the straight-line path after gravity disappears, then explain briefly in speech."
-            : "Satellite is on the orbit. Enable drawing mode, then sketch the path.";
-        }
+        if (question.id === 2) return "Select the best option, then briefly explain why.";
         return drawMode ? "Draw the trajectory" : "Drag to explore";
       })();
       ctx.fillText(helper, 18, H - 18);
@@ -1528,19 +1524,21 @@ function QuestionPanel({
   const isQ4BridgeGif = question.id === 4;
   const isQ5LogicGif = question.id === 5;
   const part = q2Part ?? 1;
-  const isQ2TheoryPart = isQ2 && part === 1;
-  const isSatelliteInteractive = isSatellite && !isQ2TheoryPart;
+  const isQ2StaticVisual = isQ2;
+  const isSatelliteInteractive = isSatellite && !isQ2StaticVisual;
   const isInteractive = isSatelliteInteractive || isDiff;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
   const hasSelectedOption = Boolean(selectedOptionId);
-  const canAdvanceQ2Part = hasSelectedOption;
+  const hasReason = selectedOptionReason.trim().length > 0;
+  const selectedOptionLabel = mcqOptions.find((option) => option.id === selectedOptionId)?.label ?? null;
+  const canAdvanceQ2Part = hasSelectedOption && hasReason;
   const responseGuidance = isSatelliteInteractive
     ? drawMode
       ? "Select the best option below. You may also sketch on the canvas to support your choice."
       : "Select the best option below. Enable drawing mode if you want to sketch the path on the canvas."
     : isDiff
       ? "Select the best option below. You may drag the point on the graph while deciding."
-      : "Select the best option below, then continue when you are ready.";
+      : "Select the best option below, briefly explain why, then continue when you are ready.";
 
   useEffect(() => {
     onActivitySnapshot?.({
@@ -1557,10 +1555,12 @@ function QuestionPanel({
       sat_angle: isSatellite ? satAngle : null,
       diff_x: isDiff ? diffX : null,
       drawing_artifact:
-        isSatelliteInteractive && part >= 2
+        isSatelliteInteractive
           ? serializeSatelliteDrawingArtifact(strokes, satAngle, canvasRef.current)
           : null,
       selected_option_id: selectedOptionId,
+      selected_option_label: selectedOptionLabel,
+      selected_option_reason: selectedOptionReason.trim() || null,
       updated_at: Date.now(),
     });
   }, [
@@ -1576,6 +1576,8 @@ function QuestionPanel({
     isDiff,
     isSatelliteInteractive,
     selectedOptionId,
+    selectedOptionLabel,
+    selectedOptionReason,
     onActivitySnapshot,
   ]);
 
@@ -1643,6 +1645,21 @@ function QuestionPanel({
                 );
               })}
             </motion.div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <label htmlFor={`${segmentId}-reason`} className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Why did you choose this option?
+              </label>
+              <textarea
+                id={`${segmentId}-reason`}
+                value={selectedOptionReason}
+                onChange={(event) => onReasonChange(event.target.value)}
+                disabled={frozen}
+                rows={3}
+                placeholder="Briefly explain your reasoning."
+                className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:opacity-50"
+              />
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{responseGuidance}</p>
+            </div>
           </div>
         )}
       </div>
@@ -1689,7 +1706,7 @@ function QuestionPanel({
                 disabled={frozen || !canAdvanceQ2Part}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
               >
-                {canAdvanceQ2Part ? "Next part" : "Select an option"}
+                {canAdvanceQ2Part ? "Next part" : "Select an option and add reason"}
               </button>
             )}
           </div>
@@ -1724,7 +1741,7 @@ function QuestionPanel({
               {question.kind === "gif" ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={GIF_URL} alt="Question visual" className="h-full w-full object-contain rounded-md" />
-              ) : isQ2TheoryPart ? (
+              ) : isQ2StaticVisual ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={Q2_THEORY_GIF_URL} alt="Satellite theory visual" className="h-full w-full object-contain rounded-md" />
               ) : isQ4BridgeGif ? (
@@ -1779,6 +1796,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
 
   const [q2Part, setQ2Part] = useState(1);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  const [selectedOptionReasons, setSelectedOptionReasons] = useState<Record<string, string>>({});
   const [candidateSequence, setCandidateSequence] = useState(2793);
   const [cameraReady, setCameraReady] = useState(false);
   const [focusCountdown, setFocusCountdown] = useState<number | null>(null);
@@ -2462,13 +2480,20 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     [question, q2Part],
   );
   const selectedOptionId = selectedOptions[currentSegmentKey] ?? null;
+  const selectedOptionReason = selectedOptionReasons[currentSegmentKey] ?? "";
   const onSelectOption = useCallback(
     (optionId: string) => {
       setSelectedOptions((prev) => ({ ...prev, [currentSegmentKey]: optionId }));
     },
     [currentSegmentKey],
   );
-  const canSubmitCurrentQuestion = Boolean(selectedOptionId);
+  const onReasonChange = useCallback(
+    (reason: string) => {
+      setSelectedOptionReasons((prev) => ({ ...prev, [currentSegmentKey]: reason }));
+    },
+    [currentSegmentKey],
+  );
+  const canSubmitCurrentQuestion = Boolean(selectedOptionId) && selectedOptionReason.trim().length > 0;
 
   // Thank You screen
   if (isFinished) {
@@ -2683,7 +2708,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                   setQ2Part={setQ2Part}
                   mcqOptions={segmentMcq.options}
                   selectedOptionId={selectedOptionId}
+                  selectedOptionReason={selectedOptionReason}
                   onSelectOption={onSelectOption}
+                  onReasonChange={onReasonChange}
                   onActivitySnapshot={(snapshot) => {
                     segmentInteractionRef.current.set(snapshot.segment_id, snapshot);
                   }}
@@ -2711,7 +2738,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                     disabled={!canSubmitCurrentQuestion}
                     className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {canSubmitCurrentQuestion ? "Submit and continue" : "Select an option to continue"}
+                    {canSubmitCurrentQuestion ? "Submit and continue" : "Select an option and add reason"}
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                     </svg>
@@ -2751,7 +2778,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                     }}
                     className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {canSubmitCurrentQuestion ? "Finish interview" : "Select an option to finish"}
+                    {canSubmitCurrentQuestion ? "Finish interview" : "Select an option and add reason"}
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />

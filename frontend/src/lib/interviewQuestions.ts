@@ -27,9 +27,9 @@ export type Question = {
 export const Q2_PART_1 =
   "Part 1: Explain verbally how a satellite stays in orbit around a celestial body. Discuss the forces acting on it, specifically their directions.";
 export const Q2_PART_2 =
-  "Part 2: The satellite is already in orbit at the position shown. If its forward velocity suddenly becomes zero, use the canvas to draw the path it will follow and briefly explain your answer.";
+  "Part 2: The satellite is already in orbit at the position shown. If its forward velocity suddenly becomes zero, select the best option and briefly explain why.";
 export const Q2_PART_3 =
-  "Part 3: The satellite is already in orbit at the position shown. If the gravitational force acting on it suddenly becomes zero, use the canvas to draw the path it will follow and briefly explain your answer.";
+  "Part 3: The satellite is already in orbit at the position shown. If the gravitational force acting on it suddenly becomes zero, select the best option and briefly explain why.";
 
 export const getQ2PartText = (part: number) => {
   if (part === 1) return Q2_PART_1;
