@@ -19,6 +19,17 @@ CREATE TABLE IF NOT EXISTS students (
 ALTER TABLE students ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS whatsapp_consent BOOLEAN DEFAULT TRUE;
 
+CREATE TABLE IF NOT EXISTS student_otp_verifications (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id      TEXT NOT NULL,
+  phone           TEXT NOT NULL,
+  otp_hash        TEXT NOT NULL,
+  expires_at      TIMESTAMPTZ NOT NULL,
+  verified_at     TIMESTAMPTZ,
+  attempt_count   INTEGER NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Legacy: kept for backward compatibility with POST /api/evaluation
 CREATE TABLE IF NOT EXISTS evaluations (
   id SERIAL PRIMARY KEY,
@@ -134,6 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_interview_attempts_time ON interview_attempts(sta
 CREATE INDEX IF NOT EXISTS idx_reports_student ON interview_reports(student_id, completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_shortlist ON interview_reports(shortlist_status, overall_score DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_delivery ON interview_reports(delivery_status);
+CREATE INDEX IF NOT EXISTS idx_student_otp_lookup
+  ON student_otp_verifications(student_id, phone, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_question_scores_room_key
   ON interview_question_scores(room, question_id, part);
 CREATE INDEX IF NOT EXISTS idx_question_scores_room_updated
