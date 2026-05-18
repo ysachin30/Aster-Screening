@@ -73,6 +73,8 @@ CRITICAL RULES:
 19. On the FIRST turn of each new question, your entire response must be only the question text itself. Do not add any extra sentence before or after it.
 20. Do not ask any follow-up until the student has spoken in the current question.
 21. Never tell the student to click "Submit & Next" or "Next Part" before they have answered the current verbal question. For Q2 drawing parts, give the navigation instruction only after they have had time to draw.
+22. Each question is OBJECTIVE with multiple-choice options shown on screen. The student selects one option on screen. Do not read the option labels aloud unless the student explicitly asks you to repeat them.
+23. After dictating the question text, wait for the student to select an option on screen. Do not require a long spoken essay answer for objective questions.
 """
 
 def build_instructions(student_name: str, questions: list[dict]) -> str:
@@ -96,6 +98,12 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
         kind = q.get("kind", "text")
         parts.append(f"\n=== Question Q{qid} ({kind}) ===\n")
         parts.append(f"Question text: {q.get('question', '')}\n")
+        if str(q.get("format") or "").lower() == "objective":
+            parts.append(
+                f"QUESTION DELIVERY for Q{qid}: This is an objective multiple-choice question. "
+                "Speak only the question text when it opens. The answer options are visible on the student's screen. "
+                "Do not read the options aloud. Wait for them to select one option, then allow them to continue.\n"
+            )
         if kind == "text" or kind == "gif":
             parts.append(
                 f"QUESTION DELIVERY for Q{qid}: Speak the question text directly when it opens. "
@@ -666,17 +674,29 @@ async def entrypoint(ctx: JobContext):
                 }
             )
 
-        scored = await _grade_question_segment(
-            question_key=segment_key,
-            question_text=meta.get("question_text") or question_meta.get("question") or "",
-            expected_answer=question_meta.get("answer") or "",
-            transcript_excerpt=transcript_excerpt,
-            activity_json=evidence_activity,
-            coverage=coverage,
-            audio_base64=audio_base64,
-            audio_mime_type=audio_mime_type,
-            api_key=google_key,
-        )
+        mcq_grade = _grade_from_mcq_selection(question_meta, part_num, evidence_activity)
+        if mcq_grade:
+            scored = mcq_grade
+            scored, drawing_evaluation = _apply_q2_drawing_recovery(
+                segment_key,
+                evidence_activity,
+                transcript_excerpt,
+                scored,
+            )
+            if drawing_evaluation:
+                scored["drawing_evaluation"] = drawing_evaluation
+        else:
+            scored = await _grade_question_segment(
+                question_key=segment_key,
+                question_text=meta.get("question_text") or question_meta.get("question") or "",
+                expected_answer=question_meta.get("answer") or "",
+                transcript_excerpt=transcript_excerpt,
+                activity_json=evidence_activity,
+                coverage=coverage,
+                audio_base64=audio_base64,
+                audio_mime_type=audio_mime_type,
+                api_key=google_key,
+            )
 
         academic_signal = _has_grade_signal(scored.get("academic"), academic=True)
         personality_signal = _has_grade_signal(scored.get("personality"), academic=False)
@@ -1030,7 +1050,8 @@ async def entrypoint(ctx: JobContext):
                 "Your entire next response must be exactly the QUESTION TEXT BELOW VERBATIM and nothing else. "
                 "Do not say any intro line, label, greeting, screen description, framing sentence, follow-up, or navigation instruction in that first response. "
                 "Do not mention any scenario, accident, diagram, animation, or other context outside the exact question text. "
-                "After that first response, wait for the student to speak before asking any follow-up or giving any navigation instruction. "
+                "The student answers by selecting one multiple-choice option on screen. Do not read the option labels aloud. "
+                "After that first response, wait for the student to select an option before giving any navigation instruction. "
                 + interaction_line
                 + nav_line + " "
                 "Never reveal, confirm, paraphrase, or hint the answer or solution. "
@@ -1361,26 +1382,61 @@ def _student_only_excerpt_text(transcript_excerpt: str) -> str:
     return _clean_transcribed_text(transcript_excerpt)
 
 
+def _numeric_recovery_corpus(transcript_excerpt: str) -> str:
+    """Use student-only lines first, then full excerpt — ASR sometimes omits 'Student:' labels."""
+    student = _student_only_excerpt_text(transcript_excerpt)
+    full = _clean_transcribed_text(transcript_excerpt)
+    parts = [re.sub(r"\s+", " ", p.lower()).strip() for p in (student, full) if p and p.strip()]
+    if not parts:
+        return ""
+    return " ".join(parts)
+
+
 def _build_concise_numeric_recovery(question_key: str, transcript_excerpt: str) -> dict | None:
     qid = _segment_question_id(question_key)
     if qid not in {4, 5}:
         return None
 
-    student_text = _student_only_excerpt_text(transcript_excerpt)
-    normalized = re.sub(r"\s+", " ", student_text.lower()).strip()
+    normalized = _numeric_recovery_corpus(transcript_excerpt)
     if not normalized:
         return None
 
     if qid == 4:
-        matched = bool(re.search(r"\b(12|twelve)\b", normalized))
+        # Correct count is 12; allow digit boundaries inside longer numbers poorly transcribed
+        matched = bool(
+            re.search(r"\b(12|twelve)\b", normalized)
+            or re.search(r"(?<![0-9.])12(?![0-9])", normalized)
+        )
         if not matched:
             return None
-        has_reasoning = any(token in normalized for token in ("edge", "edges", "painted", "face", "faces", "corner", "corners", "middle"))
+        has_reasoning = any(
+            token in normalized
+            for token in (
+                "edge",
+                "edges",
+                "painted",
+                "paint",
+                "face",
+                "faces",
+                "corner",
+                "corners",
+                "middle",
+                "layer",
+                "layers",
+                "divide",
+                "27",
+                "nine",
+                "cube",
+                "cubes",
+                "parts",
+                "equal",
+            )
+        )
         return {
             "academic": {
                 "correctness": 9.5,
-                    "understanding": 7.4 if has_reasoning else 6.8,
-                    "reasoning_depth": 6.8 if has_reasoning else 5.8,
+                "understanding": 7.4 if has_reasoning else 6.8,
+                "reasoning_depth": 6.8 if has_reasoning else 5.8,
             },
             "personality": {},
             "summary": "Concise answer matched the correct numeric result for the painted-cube question.",
@@ -1388,14 +1444,38 @@ def _build_concise_numeric_recovery(question_key: str, transcript_excerpt: str) 
             "grading_mode": "numeric_recovery",
         }
 
+    # Q5: 17 minutes minimum; accept common sum spellings (including user's 2+2+10+1+2)
+    sum_compact = re.sub(r"\s+", "", normalized)
     matched = bool(
         re.search(r"\b(17|seventeen)\b", normalized)
-        or "2+1+10+2+2" in normalized
-        or "2 1 10 2 2" in normalized
+        or re.search(r"17\s*(m|min|mins|minute|minutes)\b", normalized)
+        or "2+1+10+2+2" in sum_compact
+        or "2+2+10+1+2" in sum_compact
+        or "2+2+10+2+1" in sum_compact
     )
     if not matched:
         return None
-    has_reasoning = any(token in normalized for token in ("minute", "minutes", "bridge", "torch", "return", "returns", "cross", "total"))
+    has_reasoning = any(
+        token in normalized
+        for token in (
+            "minute",
+            "minutes",
+            "bridge",
+            "torch",
+            "return",
+            "returns",
+            "cross",
+            "total",
+            "go",
+            "goes",
+            "come",
+            "back",
+            "stay",
+            "stays",
+            "side",
+            "together",
+        )
+    )
     return {
         "academic": {
             "correctness": 9.5,
@@ -1409,21 +1489,96 @@ def _build_concise_numeric_recovery(question_key: str, transcript_excerpt: str) 
     }
 
 
+def _merge_academic_with_numeric_recovery(base_ac: dict | None, recovery_ac: dict | None) -> dict:
+    """Take the higher score per dimension so LLM cannot leave correctness at 0 while inflating others."""
+    if not isinstance(recovery_ac, dict):
+        return dict(base_ac) if isinstance(base_ac, dict) else {}
+    out: dict[str, float] = {}
+    base_d = base_ac if isinstance(base_ac, dict) else {}
+    for key in ("correctness", "understanding", "reasoning_depth"):
+        b = _metric_optional(base_d, key)
+        r = _metric_optional(recovery_ac, key)
+        if r is None:
+            chosen = b
+        elif b is None:
+            chosen = r
+        else:
+            chosen = max(b, r)
+        if chosen is not None:
+            out[key] = round(float(chosen), 2)
+    return out
+
+
+def _latest_interaction(activity_json: dict | None) -> dict:
+    if not isinstance(activity_json, dict):
+        return {}
+    latest = activity_json.get("latest_interaction")
+    if isinstance(latest, dict):
+        return latest
+    return activity_json
+
+
+def _resolve_correct_option_id(question_meta: dict, part_num: int) -> str | None:
+    parts = question_meta.get("part_mcq") or []
+    if part_num:
+        for entry in parts:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                if int(entry.get("part") or 0) == int(part_num):
+                    value = str(entry.get("correct_option_id") or "").strip()
+                    return value or None
+            except (TypeError, ValueError):
+                continue
+    value = str(question_meta.get("correct_option_id") or "").strip()
+    return value or None
+
+
+def _grade_from_mcq_selection(question_meta: dict, part_num: int, activity_json: dict | None) -> dict | None:
+    if str(question_meta.get("format") or "").lower() != "objective":
+        return None
+    interaction = _latest_interaction(activity_json if isinstance(activity_json, dict) else {})
+    selected = str(interaction.get("selected_option_id") or "").strip().upper()
+    correct = (_resolve_correct_option_id(question_meta, part_num) or "").strip().upper()
+    if not selected or not correct:
+        return None
+    is_correct = selected == correct
+    academic = {
+        "correctness": 9.0 if is_correct else 2.5,
+        "understanding": 8.5 if is_correct else 3.0,
+        "reasoning_depth": 7.5 if is_correct else 2.5,
+    }
+    personality = {
+        "confidence": 7.0,
+        "communication": 6.5,
+        "curiosity": 6.0,
+        "exploratory_thinking": 6.5,
+        "comprehension": 7.5 if is_correct else 4.0,
+    }
+    return {
+        "academic": academic,
+        "personality": personality,
+        "summary": (
+            f"Student selected option {selected}. "
+            + ("This matches the expected answer." if is_correct else f"Expected option {correct}.")
+        ),
+        "needs_review": False,
+        "grading_mode": "mcq_objective",
+    }
+
+
 def _apply_concise_numeric_recovery(question_key: str, transcript_excerpt: str, payload: dict | None) -> dict:
     base = dict(payload) if isinstance(payload, dict) else {}
     recovery = _build_concise_numeric_recovery(question_key, transcript_excerpt)
     if not recovery:
         return base
 
-    current_score = _derive_question_score_value(base.get("academic"))
     recovery_score = _derive_question_score_value(recovery.get("academic"))
     if recovery_score is None:
         return base
-    if current_score is not None and current_score >= max(60.0, recovery_score - 2):
-        return base
 
     merged = dict(base)
-    merged["academic"] = recovery["academic"]
+    merged["academic"] = _merge_academic_with_numeric_recovery(base.get("academic"), recovery.get("academic"))
     if not str(merged.get("summary") or "").strip():
         merged["summary"] = recovery["summary"]
     existing_mode = str(merged.get("grading_mode") or "").strip()
@@ -1800,7 +1955,8 @@ def _compute_segment_coverage(
     drawing_points = int(drawing_artifact.get("total_points") or 0) if drawing_artifact else 0
     meaningful_drawing = bool(is_q2_drawing and latest_interaction.get("has_drawing") and drawing_points >= 6)
     speaking_ms = float(activity.get("student_speaking_ms") or 0)
-    student_spoke = bool(activity.get("student_spoke")) or speaking_ms >= 1200
+    selected_option_id = str(latest_interaction.get("selected_option_id") or "").strip()
+    student_spoke = bool(activity.get("student_spoke")) or speaking_ms >= 1200 or bool(selected_option_id)
     score = 0.0
     if student_lines:
         score += 0.45
@@ -1813,6 +1969,8 @@ def _compute_segment_coverage(
     if audio_student_chars >= 24:
         score += 0.20
     if meaningful_drawing:
+        score += 0.35
+    if selected_option_id:
         score += 0.35
     confidence = min(1.0, round(score, 3))
     return {

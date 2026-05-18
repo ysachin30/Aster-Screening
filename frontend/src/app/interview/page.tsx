@@ -12,6 +12,14 @@ import {
 import { ConnectionState, Track, LocalVideoTrack } from "livekit-client";
 import Timer from "../../components/Timer";
 import { getStoredAssessmentSequence, reserveAssessmentSequence } from "@/lib/assessment";
+import {
+  QUESTIONS,
+  getQ2PartText,
+  getSegmentMcq,
+  type McqOption,
+  type Question,
+  type QuestionKind,
+} from "@/lib/interviewQuestions";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const LK_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
@@ -27,16 +35,6 @@ type DualAvatarState = {
   human: AvatarState;
 };
 type TranscriptEntry = { who: "ai" | "user"; text: string; id: number; updatedAt: number };
-type QuestionKind = "gif" | "satellite" | "differentiability" | "text";
-type Question = {
-  id: number;
-  kind: QuestionKind;
-  question: string;
-  context: string;
-  hints: string[];
-  answer: string;
-};
-
 type DrawingPoint = { x: number; y: number };
 type DrawingUnitVector = { x: number; y: number };
 type SerializedDrawingArtifact = {
@@ -66,6 +64,7 @@ type QuestionInteractionSnapshot = {
   sat_angle: number | null;
   diff_x: number | null;
   drawing_artifact: SerializedDrawingArtifact | null;
+  selected_option_id: string | null;
   updated_at: number;
 };
 
@@ -108,6 +107,7 @@ function buildDefaultInteractionSnapshot(segment: SegmentDescriptor): QuestionIn
     sat_angle: null,
     diff_x: null,
     drawing_artifact: null,
+    selected_option_id: null,
     updated_at: Date.now(),
   };
 }
@@ -177,112 +177,6 @@ function captureCanvasPreviewDataUrl(canvas: HTMLCanvasElement | null) {
     return null;
   }
 }
-
-const Q2_PART_1 = "Part 1: Explain verbally how a satellite stays in orbit around a celestial body. Discuss the forces acting on it, specifically their directions.";
-const Q2_PART_2 = "Part 2: The satellite is already in orbit at the position shown. If its forward velocity suddenly becomes zero, use the canvas to draw the path it will follow and briefly explain your answer.";
-const Q2_PART_3 = "Part 3: The satellite is already in orbit at the position shown. If the gravitational force acting on it suddenly becomes zero, use the canvas to draw the path it will follow and briefly explain your answer.";
-const getQ2PartText = (part: number) => {
-  if (part === 1) return Q2_PART_1;
-  if (part === 2) return Q2_PART_2;
-  return Q2_PART_3;
-};
-
-const QUESTIONS: Question[] = [
-  {
-    id: 1,
-    kind: "gif",
-    question: "A book is placed on a table and remains at rest. What causes the normal force acting on the book?",
-    context:
-      "In physics, a force is not just a push or pull — it is the result of an interaction between objects. " +
-      "At the most fundamental level, all forces in nature arise from four basic interactions:\n\n" +
-      "• Gravitational Force — acts between masses (e.g., Earth pulling objects downward)\n" +
-      "• Electromagnetic Force — acts between charged particles; responsible for most everyday forces like contact forces, friction, and rigidity of objects\n" +
-      "• Strong Nuclear Force — holds protons and neutrons together inside the nucleus\n" +
-      "• Weak Nuclear Force — responsible for certain types of radioactive decay",
-    hints: [],
-    answer:
-      "At the microscopic level, the normal force arises due to electromagnetic interactions between atoms in the two surfaces in contact.\n\n" +
-      "When an object (like a book) is placed on a surface:\n" +
-      "• The atoms in the object and the surface come very close to each other\n" +
-      "• Their electron clouds begin to overlap\n" +
-      "• Since electrons have the same charge, they repel each other (electromagnetic force)\n\n" +
-      "This repulsion prevents atoms from occupying the same space and produces a force perpendicular to the surface — the normal force.",
-  },
-  {
-    id: 2,
-    kind: "satellite",
-    question:
-      `${Q2_PART_1}\n\n${Q2_PART_2}\n\n${Q2_PART_3}`,
-    context:
-      "What is a satellite?\n"
-      + "A satellite is an object that moves around a larger celestial body due to gravity.\n"
-      + "Example: the Moon around Earth, or an artificial satellite around Earth.",
-    hints: [],
-    answer:
-      "Part 1: In a stable orbit, gravity points inward toward the central body (radially inward) and provides centripetal acceleration. The satellite's velocity is tangential (perpendicular to gravity).\n\n"
-      + "Part 2: If forward velocity suddenly becomes zero, only gravity acts, so the satellite would move straight toward the central body (along the g axis) and fall inward.\n\n"
-      + "Part 3: If gravity suddenly becomes zero, there is no inward force, so the satellite continues in a straight line along its instantaneous velocity direction (along the v axis), tangent to the orbit.",
-  },
-  {
-    id: 3,
-    kind: "differentiability",
-    question: "If a function is continuous but not differentiable at a point, what does that mean geometrically?",
-    context:
-      "Continuity at a point means there is no gap or jump — the function passes through that point without breaking. " +
-      "Differentiability means the function has a unique, well-defined tangent line at that point.\n\n" +
-      "A function can be continuous yet NOT differentiable when it has:\n" +
-      "• A sharp corner — the slope changes abruptly (e.g. f(x) = |x| at x = 0)\n" +
-      "• A cusp — one-sided slopes both go to ±∞\n" +
-      "• A vertical tangent — slope becomes infinite\n\n" +
-      "Classic example: f(x) = |x| is continuous everywhere, but at x = 0 the left slope is −1 and the right slope is +1 — they disagree, so no unique tangent exists.",
-    hints: [],
-    answer:
-      "Geometrically, a function that is continuous but not differentiable at a point has NO unique tangent line there.\n\n" +
-      "This manifests as:\n" +
-      "1. SHARP CORNER — left and right derivatives both exist but differ (e.g. f(x) = |x| at x = 0: left slope = −1, right slope = +1).\n" +
-      "2. CUSP — one-sided slopes both diverge to infinity with opposite signs.\n" +
-      "3. VERTICAL TANGENT — slope → ∞.\n\n" +
-      "Continuity guarantees the graph has no break; non-differentiability means there is a 'kink' — no matter how far you zoom in, the corner never smooths out.",
-  },
-  {
-    id: 4,
-    kind: "text",
-    question:
-      "A cube is painted on all six faces and then cut into 27 equal smaller cubes. How many small cubes will have exactly two painted faces?",
-    context:
-      "A cube divided into 27 cubes means:\n3×3×3\n\nExactly two painted faces occur on edge cubes excluding corners.",
-    hints: [],
-    answer:
-      "A cube has 12 edges.\n\nFor a 3×3×3 cube, each edge has 3 small cubes. The two end cubes are corners; the middle cube has exactly two painted faces.\n\nThus: 12×1 = 12.\n\nTherefore, 12 small cubes have exactly two painted faces.",
-  },
-  {
-    id: 5,
-    kind: "text",
-    question:
-      "Four people need to cross a bridge at night.\n\n"
-      + "Each person walks at a different speed:\n"
-      + "A = 1 minute\n"
-      + "B = 2 minutes\n"
-      + "C = 5 minutes\n"
-      + "D = 10 minutes\n\n"
-      + "When two people cross together, they move at the slower person's speed.\n\n"
-      + "The torch must always be carried during a crossing.\n\n"
-      + "What is the minimum total time required for everyone to cross?",
-    context: "",
-    hints: [],
-    answer:
-      "PRIVATE RUBRIC (never reveal hints/solution aloud).\n\n"
-      + "Hint for evaluator only — It is not always optimal for the fastest person to escort everyone. "
-      + "They have one torch, and the bridge can hold at most two people at a time.\n\n"
-      + "Optimal solution is 17 minutes:\n"
-      + "A + B cross → 2 min\n"
-      + "A returns → 1 min\n"
-      + "C + D cross → 10 min\n"
-      + "B returns → 2 min\n"
-      + "A + B cross again → 2 min\n"
-      + "Total: 2+1+10+2+2 = 17.",
-  },
-];
 
 const questionDiscipline = (question: Question) => {
   if (question.kind === "differentiability") return "Mathematics";
@@ -358,13 +252,17 @@ function InterviewPageContent() {
         room,
         identity: sid,
         name,
-        questions: QUESTIONS.map(q => ({
+        questions: QUESTIONS.map((q) => ({
           id: q.id,
           kind: q.kind,
           question: q.question,
           context: q.context,
           hints: q.hints,
           answer: q.answer,
+          format: q.format,
+          options: q.options,
+          correct_option_id: q.correct_option_id,
+          part_mcq: q.partMcq,
         })),
       }),
     })
@@ -904,37 +802,6 @@ function isTranscriptNearDuplicate(nextText: string, prevText: string) {
   return longer.includes(shorter) && shorter.length / longer.length >= 0.82;
 }
 
-// Arrow helper for satellite canvas
-function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, label: string) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len, uy = dy / len;
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  // arrowhead
-  const ah = 12;
-  ctx.beginPath();
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(x2 - ux * ah + uy * ah * 0.55, y2 - uy * ah - ux * ah * 0.55);
-  ctx.lineTo(x2 - ux * ah - uy * ah * 0.55, y2 - uy * ah + ux * ah * 0.55);
-  ctx.closePath();
-  ctx.fill();
-  // label
-  ctx.font = "bold 12px system-ui";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = "#000";
-  ctx.shadowBlur = 4;
-  ctx.fillText(label, x2 + ux * 22, y2 + uy * 22);
-  ctx.shadowBlur = 0;
-}
-
 /** Q2 canvas: draw a clear satellite at orbit position; tangent is motion direction along the orbit. */
 function drawQ2SatelliteBody(
   ctx: CanvasRenderingContext2D,
@@ -1035,6 +902,9 @@ function QuestionPanel({
   q2Part,
   setQ2Part,
   onActivitySnapshot,
+  mcqOptions,
+  selectedOptionId,
+  onSelectOption,
 }: {
   question: Question;
   frozen: boolean;
@@ -1043,6 +913,9 @@ function QuestionPanel({
   q2Part?: number;
   setQ2Part?: React.Dispatch<React.SetStateAction<number>>;
   onActivitySnapshot?: (snapshot: QuestionInteractionSnapshot) => void;
+  mcqOptions: McqOption[];
+  selectedOptionId: string | null;
+  onSelectOption: (optionId: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Satellite state (used only when question.kind === "satellite")
@@ -1290,18 +1163,6 @@ function QuestionPanel({
       }
 
       const canvasQ2Part = question.id === 2 ? (q2Part ?? 1) : 0;
-      const showGravityArrow = canvasQ2Part === 2;
-      const showVelocityArrow = canvasQ2Part === 2 || canvasQ2Part === 3;
-
-      if (showGravityArrow) {
-        const gx = cx - sx;
-        const gy = cy - sy;
-        const glen = Math.hypot(gx, gy) || 1;
-        drawArrow(ctx, sx, sy, sx + (gx / glen) * 85, sy + (gy / glen) * 85, "#e040fb", "F_g");
-      }
-      if (showVelocityArrow) {
-        drawArrow(ctx, sx, sy, sx + tx * 95, sy + ty * 95, "#00d4ff", "v");
-      }
 
       drawQ2SatelliteBody(ctx, sx, sy, tx, ty);
 
@@ -1315,42 +1176,16 @@ function QuestionPanel({
         if (canvasQ2Part === 2) {
           return drawMode
             ? "Draw the path the satellite follows, then explain briefly in speech."
-            : "Satellite and forces are shown. Enable drawing mode, then sketch the path.";
+            : "Satellite is on the orbit. Enable drawing mode, then sketch the path.";
         }
         if (canvasQ2Part === 3) {
           return drawMode
             ? "Draw the straight-line path after gravity disappears, then explain briefly in speech."
-            : "Satellite and velocity are shown. Enable drawing mode, then sketch the path.";
+            : "Satellite is on the orbit. Enable drawing mode, then sketch the path.";
         }
         return drawMode ? "Draw the trajectory" : "Drag to explore";
       })();
       ctx.fillText(helper, 18, H - 18);
-
-      // Legend — Q2 part 2: both vectors; part 3: velocity only (gravity “off” in the prompt)
-      if (showGravityArrow) {
-        ctx.fillStyle = "rgba(0,0,8,0.55)";
-        ctx.beginPath();
-        ctx.roundRect(14, 14, 300, 58, 6);
-        ctx.fill();
-
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.font = "bold 12px system-ui";
-        ctx.fillStyle = "#e040fb";
-        ctx.fillText("● F_g  gravitational force  (radial inward)", 24, 24);
-        ctx.fillStyle = "#00d4ff";
-        ctx.fillText("● v    tangential velocity  (perpendicular)", 24, 43);
-      } else if (canvasQ2Part === 3) {
-        ctx.fillStyle = "rgba(0,0,8,0.55)";
-        ctx.beginPath();
-        ctx.roundRect(14, 14, 260, 38, 6);
-        ctx.fill();
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.font = "bold 12px system-ui";
-        ctx.fillStyle = "#00d4ff";
-        ctx.fillText("● v    instantaneous velocity  (tangent to orbit)", 24, 24);
-      }
 
       // Mode pill — top right
       const modeLabel = drawMode ? "DRAW MODE" : "VIEW";
@@ -1697,14 +1532,15 @@ function QuestionPanel({
   const isSatelliteInteractive = isSatellite && !isQ2TheoryPart;
   const isInteractive = isSatelliteInteractive || isDiff;
   const displayedQuestion = isQ2 ? getQ2PartText(part) : question.question;
-  const canAdvanceQ2Part = part === 1 ? true : strokes.length > 0;
+  const hasSelectedOption = Boolean(selectedOptionId);
+  const canAdvanceQ2Part = hasSelectedOption;
   const responseGuidance = isSatelliteInteractive
     ? drawMode
-      ? "Draw directly on the frame to explain your reasoning before advancing."
-      : "The satellite is fixed on the orbit. Enable drawing mode, then sketch your answer path."
+      ? "Select the best option below. You may also sketch on the canvas to support your choice."
+      : "Select the best option below. Enable drawing mode if you want to sketch the path on the canvas."
     : isDiff
-      ? "Drag the point across the curve and describe what happens near the corner."
-      : "Speak clearly and structure your answer before continuing.";
+      ? "Select the best option below. You may drag the point on the graph while deciding."
+      : "Select the best option below, then continue when you are ready.";
 
   useEffect(() => {
     onActivitySnapshot?.({
@@ -1724,9 +1560,24 @@ function QuestionPanel({
         isSatelliteInteractive && part >= 2
           ? serializeSatelliteDrawingArtifact(strokes, satAngle, canvasRef.current)
           : null,
+      selected_option_id: selectedOptionId,
       updated_at: Date.now(),
     });
-  }, [segmentId, question.id, question.kind, part, strokes, drawMode, satAngle, diffX, isSatellite, isDiff, onActivitySnapshot]);
+  }, [
+    segmentId,
+    question.id,
+    question.kind,
+    part,
+    strokes,
+    drawMode,
+    satAngle,
+    diffX,
+    isSatellite,
+    isDiff,
+    isSatelliteInteractive,
+    selectedOptionId,
+    onActivitySnapshot,
+  ]);
 
   return (
     <motion.div
@@ -1757,6 +1608,43 @@ function QuestionPanel({
             </h2>
           </div>
         </div>
+
+        {mcqOptions.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Select one answer</p>
+            <motion.div role="radiogroup" aria-label="Answer options" className="grid gap-2">
+              {mcqOptions.map((option) => {
+                const selected = selectedOptionId === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={frozen}
+                    onClick={() => onSelectOption(option.id)}
+                    className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-all disabled:opacity-50 ${
+                      selected
+                        ? "border-indigo-300 bg-indigo-50 shadow-sm"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        selected
+                          ? "border-indigo-600 bg-indigo-600 text-white"
+                          : "border-slate-300 bg-white text-slate-600"
+                      }`}
+                    >
+                      {option.id}
+                    </span>
+                    <span className="text-sm leading-snug text-slate-800">{option.label}</span>
+                  </button>
+                );
+              })}
+            </motion.div>
+          </div>
+        )}
       </div>
 
       <div className="surface-panel flex flex-col rounded-2xl border border-slate-200 p-2.5 shadow-sm lg:flex-1 lg:min-h-0">
@@ -1801,7 +1689,7 @@ function QuestionPanel({
                 disabled={frozen || !canAdvanceQ2Part}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
               >
-                {canAdvanceQ2Part ? "Next part" : "Complete drawing"}
+                {canAdvanceQ2Part ? "Next part" : "Select an option"}
               </button>
             )}
           </div>
@@ -1890,6 +1778,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [q2Part, setQ2Part] = useState(1);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [candidateSequence, setCandidateSequence] = useState(2793);
   const [cameraReady, setCameraReady] = useState(false);
   const [focusCountdown, setFocusCountdown] = useState<number | null>(null);
@@ -2564,6 +2453,23 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     return ((activeQuestionIdx + Math.max(1, q2Part) / 3) / QUESTIONS.length) * 100;
   }, [activeQuestionIdx, question.id, q2Part]);
 
+  const currentSegmentKey = useMemo(
+    () => `Q${question.id}${question.id === 2 ? `-P${q2Part}` : ""}`,
+    [question.id, q2Part],
+  );
+  const segmentMcq = useMemo(
+    () => getSegmentMcq(question, question.id === 2 ? q2Part : 0),
+    [question, q2Part],
+  );
+  const selectedOptionId = selectedOptions[currentSegmentKey] ?? null;
+  const onSelectOption = useCallback(
+    (optionId: string) => {
+      setSelectedOptions((prev) => ({ ...prev, [currentSegmentKey]: optionId }));
+    },
+    [currentSegmentKey],
+  );
+  const canSubmitCurrentQuestion = Boolean(selectedOptionId);
+
   // Thank You screen
   if (isFinished) {
     return (
@@ -2771,10 +2677,13 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                   key={`${question.id}:${question.id === 2 ? q2Part : 0}`}
                   question={question}
                   frozen={frozen}
-                  segmentId={`Q${question.id}${question.id === 2 ? `-P${q2Part}` : ""}`}
+                  segmentId={currentSegmentKey}
                   onCanvasReady={publishPlayground}
                   q2Part={q2Part}
                   setQ2Part={setQ2Part}
+                  mcqOptions={segmentMcq.options}
+                  selectedOptionId={selectedOptionId}
+                  onSelectOption={onSelectOption}
                   onActivitySnapshot={(snapshot) => {
                     segmentInteractionRef.current.set(snapshot.segment_id, snapshot);
                   }}
@@ -2799,9 +2708,10 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                   <button
                     type="button"
                     onClick={() => navigateToNext()}
-                    className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold"
+                    disabled={!canSubmitCurrentQuestion}
+                    className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Submit and continue
+                    {canSubmitCurrentQuestion ? "Submit and continue" : "Select an option to continue"}
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                     </svg>
@@ -2813,7 +2723,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                 <div className="shrink-0 pt-2 pb-2">
                   <button
                     type="button"
+                    disabled={!canSubmitCurrentQuestion}
                     onClick={async () => {
+                      if (!canSubmitCurrentQuestion) return;
                       if (currentSegmentRef.current) {
                         const currentFrozen = freezeSegmentForUpload(currentSegmentRef.current, "finish_click");
                         currentSegmentRef.current = null;
@@ -2837,9 +2749,9 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
                       publishFinish(payload);
                       setIsFinished(true);
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Finish interview
+                    {canSubmitCurrentQuestion ? "Finish interview" : "Select an option to finish"}
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 1 0-15 0" />

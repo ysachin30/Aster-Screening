@@ -29,6 +29,17 @@ tokenRouter.post("/question-changed", async (req, res) => {
   }
 });
 
+const McqOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+});
+
+const QuestionPartMcqSchema = z.object({
+  part: z.number(),
+  options: z.array(McqOptionSchema),
+  correct_option_id: z.string(),
+});
+
 const QuestionSchema = z.object({
   id: z.number(),
   kind: z.string().optional(),
@@ -36,6 +47,10 @@ const QuestionSchema = z.object({
   context: z.string().optional(),
   hints: z.array(z.string()).optional(),
   answer: z.string().optional(),
+  format: z.enum(["objective", "verbal"]).optional(),
+  options: z.array(McqOptionSchema).optional(),
+  correct_option_id: z.string().optional(),
+  part_mcq: z.array(QuestionPartMcqSchema).optional(),
 });
 
 const Body = z.object({
