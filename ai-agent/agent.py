@@ -29,6 +29,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
+from livekit.agents.types import NOT_GIVEN
 from livekit.plugins.google.realtime import RealtimeModel
 
 load_dotenv()
@@ -42,8 +43,25 @@ logger = logging.getLogger("gv-interviewer")
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:4000")
 INTERVIEW_SECONDS = int(os.getenv("INTERVIEW_SECONDS", "600"))
-# BCP-47 locale for native audio — en-IN steers pronunciation toward Indian English.
-GEMINI_SPEECH_LANGUAGE = os.getenv("GEMINI_SPEECH_LANGUAGE", "en-IN")
+
+
+def _gemini_live_speech_language_kw() -> object:
+    """Speech locale for RealtimeModel, or NOT_GIVEN for API default.
+
+    ``gemini-2.5-flash-native-audio-preview-12-2025`` rejects some regional codes
+    (notably ``en-IN``). Indian English accent should come from instructions, not locale.
+    """
+    raw = (os.getenv("GEMINI_SPEECH_LANGUAGE") or "").strip()
+    if not raw:
+        return NOT_GIVEN
+    norm = raw.replace("_", "-").lower()
+    if norm == "en-in":
+        logger.warning(
+            "GEMINI_SPEECH_LANGUAGE=en-IN is unsupported for gemini-2.5-flash-native-audio-preview; "
+            "using API default. Keep Indian English accent in system instructions."
+        )
+        return NOT_GIVEN
+    return raw
 
 SYSTEM_PROMPT_BASE = """You are an AI Admissions Interviewer for Gyan Vihar University engineering college.
 The student has already cleared their technical exams (JEE). Your goal is to test
@@ -370,7 +388,7 @@ async def entrypoint(ctx: JobContext):
         model="gemini-2.5-flash-native-audio-preview-12-2025",
         api_key=google_key,
         voice="Puck",
-        language=GEMINI_SPEECH_LANGUAGE,
+        language=_gemini_live_speech_language_kw(),
         instructions=instructions,
         input_audio_transcription=genai_types.AudioTranscriptionConfig(),
         output_audio_transcription=genai_types.AudioTranscriptionConfig(),
