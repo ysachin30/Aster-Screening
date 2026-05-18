@@ -1766,6 +1766,8 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   const pendingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const publishedRef = useRef(false);
   const lastAutoAnnounceRef = useRef<string>("");
+  const prevIntroPhaseRef = useRef(isIntroductionPhase);
+  const forceNextQuestionReadRef = useRef(false);
   /** When intro→question transition fires; drop late user STT from intro for 2.5s */
   const introEndedAtRef = useRef<number>(0);
   const prevSpeakerRef = useRef<"none" | "ai" | "user">("none");
@@ -2134,6 +2136,8 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
           kind: nextQ.kind,
           code: nextIdx,
           part: (extra as any)?.part,
+          forceRead: Boolean((extra as any)?.forceRead),
+          room: room.name,
           attempt,
         });
       } catch (e) { console.warn("[LK] publishData failed", e); }
@@ -2426,16 +2430,35 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
     setActiveQuestionIdx(nextIdx);
   }, [question, setAnsweredQuestions, setActiveQuestionIdx, setIsFinished]);
 
+  useEffect(() => {
+    const wasIntro = prevIntroPhaseRef.current;
+    prevIntroPhaseRef.current = isIntroductionPhase;
+    if (wasIntro && !isIntroductionPhase) {
+      lastAutoAnnounceRef.current = "";
+      forceNextQuestionReadRef.current = true;
+    }
+  }, [isIntroductionPhase]);
+
   // Single source of truth: announce when visible question or Q2 part changes.
   useEffect(() => {
     if (isIntroductionPhase) return;
     const idx = QUESTIONS.findIndex(q => q.id === question.id);
     if (idx < 0) return;
     const key = `${question.id}:${question.id === 2 ? q2Part : 0}`;
-    if (lastAutoAnnounceRef.current === key) return;
+    const forceRead = forceNextQuestionReadRef.current;
+    if (lastAutoAnnounceRef.current === key && !forceRead) return;
     lastAutoAnnounceRef.current = key;
-    publishQuestionChanged(idx, question, question.id === 2 ? { part: q2Part } : undefined);
-  }, [activeQuestionIdx, question, q2Part, isIntroductionPhase, publishQuestionChanged]);
+    forceNextQuestionReadRef.current = false;
+    const extra: Record<string, unknown> = question.id === 2 ? { part: q2Part } : {};
+    if (forceRead) extra.forceRead = true;
+    console.log("[LK] question_changed visible announcement", {
+      questionId: question.id,
+      part: question.id === 2 ? q2Part : undefined,
+      forceRead,
+      room: room.name,
+    });
+    publishQuestionChanged(idx, question, Object.keys(extra).length ? extra : undefined);
+  }, [activeQuestionIdx, question, q2Part, isIntroductionPhase, publishQuestionChanged, room.name]);
 
   const stateLabel: Record<AvatarState, string> = {
     idle: "Waiting for you…", speaking: "Speaking…", listening: "Listening to you…",

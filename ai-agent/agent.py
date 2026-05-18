@@ -964,19 +964,29 @@ async def entrypoint(ctx: JobContext):
         kind = payload.get("kind", "")
         qtext = payload.get("question", "")
         finish = bool(payload.get("finish"))
+        force_read = bool(payload.get("forceRead"))
         event_id = str(payload.get("eventId") or "").strip() or None
         part_raw = payload.get("part")
         try:
             part_num = int(part_raw) if part_raw is not None else None
         except (TypeError, ValueError):
             part_num = None
-        logger.info("📨 question_changed received: code=%s Q%s (%s) part=%s finish=%s event=%s", code, qid, kind, part_num, finish, event_id)
+        logger.info(
+            "📨 question_changed received: code=%s Q%s (%s) part=%s finish=%s force_read=%s event=%s",
+            code,
+            qid,
+            kind,
+            part_num,
+            finish,
+            force_read,
+            event_id,
+        )
 
         if not finish:
             if event_id and (event_id == last_question_event_id["value"] or event_id in inflight_question_event_ids):
                 logger.info("↺ duplicate question_changed eventId=%s — ignoring retry", event_id)
                 return
-            if active_q.get("qid") == qid and active_q.get("part") == part_num:
+            if active_q.get("qid") == qid and active_q.get("part") == part_num and not force_read:
                 logger.info("↺ same screen state Q%s part=%s — not re-dictating", qid, part_num)
                 return
             if event_id:
