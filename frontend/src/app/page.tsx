@@ -2,11 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import {
-  ASSESSMENT_SEQUENCE_START,
-  reserveAssessmentSequenceWithFallback,
-} from "@/lib/assessment";
+import { useState } from "react";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const REQUIRE_OTP = false;
@@ -22,30 +18,9 @@ export default function Home() {
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sequence, setSequence] = useState<number>(ASSESSMENT_SEQUENCE_START);
-  const [sequenceReady, setSequenceReady] = useState(true);
-  const [sequenceError, setSequenceError] = useState<string | null>(null);
+  const [sequence, setSequence] = useState<number | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    let cancelled = false;
-    void reserveAssessmentSequenceWithFallback()
-      .then((reservedSequence) => {
-        if (cancelled) return;
-        setSequence(reservedSequence);
-        setSequenceReady(true);
-        setSequenceError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.warn("[assessment-sequence]", err);
-        setSequenceReady(true);
-        setSequenceError(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const resetOtpState = () => {
     setOtp("");
@@ -114,8 +89,9 @@ export default function Home() {
   const start = async () => {
     if (!studentId.trim() || !name.trim() || (REQUIRE_OTP && !phoneVerified) || loading) return;
     setLoading(true);
+    setStartError(null);
     try {
-      const studentResponse = await fetch(`${BACKEND}/api/student`, {
+      const response = await fetch("/api/start-interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -125,19 +101,21 @@ export default function Home() {
           whatsapp_consent: REQUIRE_OTP,
         }),
       });
-      if (!studentResponse.ok) throw new Error("Unable to save verified student details.");
-      const reservedSequence = await reserveAssessmentSequenceWithFallback();
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to start the assessment right now.");
+      }
+      const reservedSequence = Number(payload.sequence);
+      if (!payload.room || !Number.isFinite(reservedSequence)) {
+        throw new Error("Invalid start response received.");
+      }
       setSequence(reservedSequence);
-      setSequenceReady(true);
-      setSequenceError(null);
-      const room = `interview-${studentId.trim()}-${Date.now()}`;
       router.push(
-        `/interview?room=${room}&name=${encodeURIComponent(name.trim())}&sid=${encodeURIComponent(studentId.trim())}&seq=${reservedSequence}`,
+        `/interview?room=${encodeURIComponent(payload.room)}&name=${encodeURIComponent(name.trim())}&sid=${encodeURIComponent(studentId.trim())}&seq=${reservedSequence}`,
       );
     } catch (err) {
-      console.warn("[assessment-sequence]", err);
-      setSequenceReady(false);
-      setSequenceError("Unable to start the assessment right now. Please try again.");
+      console.warn("[start-interview]", err);
+      setStartError(err instanceof Error ? err.message : "Unable to start the assessment right now. Please try again.");
       setLoading(false);
     }
   };
@@ -207,7 +185,7 @@ export default function Home() {
                     Sequence
                   </p>
                   <p className="mt-0.5 text-lg font-semibold text-slate-700">
-                    {sequenceReady ? `#${sequence}` : "Allocating..."}
+                    {sequence ? `#${sequence}` : "On start"}
                   </p>
                 </div>
               </div>
@@ -319,9 +297,9 @@ export default function Home() {
 
               <button
                 onClick={start}
-                disabled={!ready || loading || !sequenceReady}
+                disabled={!ready || loading}
                 className={`mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold transition-all ${
-                  ready && !loading && sequenceReady
+                  ready && !loading
                     ? "btn-primary"
                     : "cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
                 }`}
@@ -350,8 +328,8 @@ export default function Home() {
                 )}
               </button>
 
-              {sequenceError ? (
-                <p className="mt-3 text-center text-xs font-medium text-amber-700">{sequenceError}</p>
+              {startError ? (
+                <p className="mt-3 text-center text-xs font-medium text-amber-700">{startError}</p>
               ) : null}
 
               <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">
