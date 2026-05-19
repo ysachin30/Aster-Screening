@@ -11,7 +11,7 @@ import {
 } from "@livekit/components-react";
 import { ConnectionState, Track, LocalVideoTrack } from "livekit-client";
 import Timer from "../../components/Timer";
-import { getStoredAssessmentSequence, reserveAssessmentSequence } from "@/lib/assessment";
+import { getStoredAssessmentSequence, reserveAssessmentSequenceWithFallback } from "@/lib/assessment";
 import {
   QUESTIONS,
   getQ2PartText,
@@ -1843,7 +1843,7 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       setCandidateSequence(stored);
       return undefined;
     }
-    void reserveAssessmentSequence()
+    void reserveAssessmentSequenceWithFallback()
       .then((sequence) => {
         if (!cancelled) setCandidateSequence(sequence);
       })

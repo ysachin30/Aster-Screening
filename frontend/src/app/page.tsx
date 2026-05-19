@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ASSESSMENT_SEQUENCE_START,
-  reserveAssessmentSequence,
+  reserveAssessmentSequenceWithFallback,
 } from "@/lib/assessment";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
@@ -23,13 +23,13 @@ export default function Home() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sequence, setSequence] = useState<number>(ASSESSMENT_SEQUENCE_START);
-  const [sequenceReady, setSequenceReady] = useState(false);
+  const [sequenceReady, setSequenceReady] = useState(true);
   const [sequenceError, setSequenceError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
-    void reserveAssessmentSequence()
+    void reserveAssessmentSequenceWithFallback()
       .then((reservedSequence) => {
         if (cancelled) return;
         setSequence(reservedSequence);
@@ -39,8 +39,8 @@ export default function Home() {
       .catch((err) => {
         if (cancelled) return;
         console.warn("[assessment-sequence]", err);
-        setSequenceReady(false);
-        setSequenceError("Unable to allocate a candidate sequence right now.");
+        setSequenceReady(true);
+        setSequenceError(null);
       });
     return () => {
       cancelled = true;
@@ -126,7 +126,7 @@ export default function Home() {
         }),
       });
       if (!studentResponse.ok) throw new Error("Unable to save verified student details.");
-      const reservedSequence = await reserveAssessmentSequence();
+      const reservedSequence = await reserveAssessmentSequenceWithFallback();
       setSequence(reservedSequence);
       setSequenceReady(true);
       setSequenceError(null);
@@ -137,7 +137,7 @@ export default function Home() {
     } catch (err) {
       console.warn("[assessment-sequence]", err);
       setSequenceReady(false);
-      setSequenceError("Unable to allocate a candidate sequence right now.");
+      setSequenceError("Unable to start the assessment right now. Please try again.");
       setLoading(false);
     }
   };
