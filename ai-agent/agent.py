@@ -1047,17 +1047,6 @@ async def entrypoint(ctx: JobContext):
             elif qid == 2 and part_num == 3:
                 nav_line = "instruct them to click Submit & Next."
 
-            if qid == 2 and part_num in (1, 2, 3):
-                interaction_line = (
-                    "After the student selects an option or states an answer, ask at most one short interrogative probe about why they chose it. "
-                    "If they already explained their choice, do not cross-question. If they stay silent, ask only one neutral prompt. After that, "
-                )
-            else:
-                interaction_line = (
-                    "After the student answers or selects an option, ask one short verbal reasoning probe before navigation. "
-                    "If they stay silent, ask only one neutral prompt. Then "
-                )
-
             draw_hint_block = ("\n".join(f" {h}" for h in extra_hints) + "\n") if extra_hints else ""
 
             notice = (
@@ -1066,19 +1055,14 @@ async def entrypoint(ctx: JobContext):
                 "Speak only in English. "
                 "Your entire next response must be exactly the QUESTION TEXT BELOW VERBATIM and nothing else. "
                 "Do not say any intro line, label, greeting, screen description, framing sentence, follow-up, or navigation instruction in that first response. "
+                "For this response only, forbidden phrases include 'why did you choose it', 'what is your current thinking', 'how would you approach it', and any similar reasoning probe. "
                 "Do not mention any scenario, accident, diagram, animation, or other context outside the exact question text. "
                 "The student answers by selecting one multiple-choice option on screen. Do not read the option labels aloud. "
-                "After that first response, wait for the student to select an option and explain aloud before giving any navigation instruction. "
-                + interaction_line
-                + nav_line + " "
                 "Never reveal, confirm, paraphrase, or hint the answer or solution. "
                 "Never explain the concept, method, diagram, or next step. "
-                "If the student is stuck, ask only one short neutral prompt and do not explain the problem for them. "
-                "Never restate the question after this first dictation unless the student explicitly asks you to repeat it. "
-                "Do not tell them to click Submit & Next or Next Part before they have selected an option and had a chance to explain aloud. "
-                "Every sentence after the question text must be either an interrogative probe or, only when allowed, a navigation instruction. "
                 "Do NOT end the interview. Do NOT say that the questions are complete, and do NOT say it was a pleasure speaking with the student yet."
-                " After you finish speaking this turn, wait silently — do not repeat the question unless the student asks."
+                " After you finish speaking this turn, wait silently. In later turns only, after the student selects an option, you may ask one brief reasoning probe if they have not explained. "
+                f"Then, only after they have selected and explained, {nav_line} "
                 f"\n\nQUESTION TEXT (VERBATIM): {qtext}\n"
                 + draw_hint_block
             )
