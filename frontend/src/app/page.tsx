@@ -9,6 +9,7 @@ import {
 } from "@/lib/assessment";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+const REQUIRE_OTP = false;
 
 export default function Home() {
   const [studentId, setStudentId] = useState("");
@@ -111,7 +112,7 @@ export default function Home() {
   };
 
   const start = async () => {
-    if (!studentId.trim() || !name.trim() || !phoneVerified || loading) return;
+    if (!studentId.trim() || !name.trim() || (REQUIRE_OTP && !phoneVerified) || loading) return;
     setLoading(true);
     try {
       const studentResponse = await fetch(`${BACKEND}/api/student`, {
@@ -120,8 +121,8 @@ export default function Home() {
         body: JSON.stringify({
           student_id: studentId.trim(),
           name: name.trim(),
-          phone: phone.trim(),
-          whatsapp_consent: true,
+          phone: phone.trim() || undefined,
+          whatsapp_consent: REQUIRE_OTP,
         }),
       });
       if (!studentResponse.ok) throw new Error("Unable to save verified student details.");
@@ -141,8 +142,9 @@ export default function Home() {
     }
   };
 
-  const canSendOtp = studentId.trim().length > 0 && name.trim().length > 0 && phone.trim().length > 0;
-  const ready = canSendOtp && phoneVerified;
+  const basicReady = studentId.trim().length > 0 && name.trim().length > 0;
+  const canSendOtp = basicReady && phone.trim().length > 0;
+  const ready = basicReady && (!REQUIRE_OTP || phoneVerified);
 
   return (
     <main className="relative flex min-h-screen flex-col justify-center overflow-y-auto bg-slate-50">
@@ -244,36 +246,38 @@ export default function Home() {
                   />
                 </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    WhatsApp Number
-                  </span>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      className="field-shell w-full rounded-xl px-4 py-3 text-sm"
-                      value={phone}
-                      onChange={(e) => {
-                        setPhone(e.target.value);
-                        resetOtpState();
-                      }}
-                      placeholder="+919876543210"
-                      inputMode="tel"
-                    />
-                    <button
-                      type="button"
-                      onClick={sendOtp}
-                      disabled={!canSendOtp || otpLoading !== null}
-                      className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {otpLoading === "send" ? "Sending..." : otpSent ? "Resend OTP" : "Send OTP"}
-                    </button>
-                  </div>
-                  <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                    Use E.164 format. Indian 10-digit numbers are accepted and sent as +91.
-                  </p>
-                </label>
+                {REQUIRE_OTP ? (
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      WhatsApp Number
+                    </span>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        className="field-shell w-full rounded-xl px-4 py-3 text-sm"
+                        value={phone}
+                        onChange={(e) => {
+                          setPhone(e.target.value);
+                          resetOtpState();
+                        }}
+                        placeholder="+919876543210"
+                        inputMode="tel"
+                      />
+                      <button
+                        type="button"
+                        onClick={sendOtp}
+                        disabled={!canSendOtp || otpLoading !== null}
+                        className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {otpLoading === "send" ? "Sending..." : otpSent ? "Resend OTP" : "Send OTP"}
+                      </button>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                      Use E.164 format. Indian 10-digit numbers are accepted and sent as +91.
+                    </p>
+                  </label>
+                ) : null}
 
-                {otpSent || phoneVerified ? (
+                {REQUIRE_OTP && (otpSent || phoneVerified) ? (
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                       WhatsApp OTP
