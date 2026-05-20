@@ -246,41 +246,49 @@ function InterviewPageContent() {
 
   useEffect(() => {
     if (!room) return;
-    console.log("[LK] Fetching token", { room, sid, name, backend: BACKEND, lkUrl: LK_URL });
-    fetch(`${BACKEND}/api/getToken`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        room,
-        identity: sid,
-        name,
-        questions: QUESTIONS.map((q) => ({
-          id: q.id,
-          kind: q.kind,
-          question: q.question,
-          context: q.context,
-          hints: q.hints,
-          answer: q.answer,
-          format: q.format,
-          options: q.options,
-          correct_option_id: q.correct_option_id,
-          part_mcq: q.partMcq,
-        })),
-      }),
-    })
-      .then((r) => {
-        console.log("[LK] Token response status", r.status);
-        return r.json();
-      })
-      .then((d) => {
-        if (d.token) {
-          console.log("[LK] Token received ✓ (first 40 chars):", d.token.slice(0, 40));
-        } else {
-          console.error("[LK] Token response missing token field", d);
+    let cancelled = false;
+    const delays = [0, 800, 1600, 3000, 5000];
+
+    const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+    const fetchTokenWithRetry = async () => {
+      for (let attempt = 1; attempt <= delays.length; attempt += 1) {
+        if (cancelled) return;
+        if (delays[attempt - 1] > 0) await sleep(delays[attempt - 1]);
+        if (cancelled) return;
+
+        try {
+          console.log("[LK] Fetching token", { room, sid, name, attempt, lkUrl: LK_URL });
+          const response = await fetch("/api/get-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room, identity: sid, name }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          console.log("[LK] Token response status", response.status, { attempt });
+
+          if (!response.ok || typeof payload.token !== "string" || !payload.token) {
+            throw new Error(payload.error || "Token response missing token");
+          }
+
+          if (!cancelled) {
+            console.log("[LK] Token received ✓ (first 40 chars):", payload.token.slice(0, 40));
+            setToken(payload.token);
+          }
+          return;
+        } catch (e) {
+          console.warn("[LK] Token fetch attempt failed", { attempt, error: e });
+          if (attempt === delays.length) {
+            console.error("[LK] Token fetch failed after retries", e);
+          }
         }
-        setToken(d.token);
-      })
-      .catch((e) => console.error("[LK] Token fetch failed", e));
+      }
+    };
+
+    void fetchTokenWithRetry();
+    return () => {
+      cancelled = true;
+    };
   }, [room, name, sid]);
 
   if (!token) {

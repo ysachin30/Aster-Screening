@@ -69,6 +69,11 @@ tokenRouter.post("/getToken", async (req, res) => {
   const parsed = Body.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { room, identity, name, questions, questionText, questionContext, questionHints } = parsed.data;
+  const hasQuestionList = Array.isArray(questions) && questions.length > 0;
+  const hasLegacyQuestion = Boolean(questionText?.trim());
+  if (!hasQuestionList && !hasLegacyQuestion) {
+    return res.status(400).json({ error: "questions are required for LiveKit dispatch" });
+  }
 
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -125,7 +130,8 @@ tokenRouter.post("/getToken", async (req, res) => {
     }
   } catch (e: any) {
     console.error("[dispatch] ✗ FAILED:", e?.message);
+    return res.status(500).json({ error: "LiveKit agent dispatch failed" });
   }
 
-  res.json({ token, room, identity });
+  res.json({ token, room, identity, questions_count: questions?.length ?? (hasLegacyQuestion ? 1 : 0) });
 });
