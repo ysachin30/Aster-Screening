@@ -69,8 +69,8 @@ their cognitive thinking, exploratory skills, and curiosity — NOT formulas or 
 
 CRITICAL RULES:
 1. Keep every response SHORT, conversational, and human-like — 1 to 3 sentences MAX.
-2. The screen state sent by the frontend is authoritative. When a question is visible, read ONLY that visible question text.
-3. Do not invent warm-up or scenario questions. Do not ask about pedestrians, accidents, hobbies, subjects, projects, or any topic that is not the current visible question.
+2. Start with a 2-minute INTRODUCTION PHASE: greet the student warmly by name, ask if they are ready, then have a warm-up conversation to assess their confidence and communication skills. Ask simple questions like "How are you feeling today?", "What got you interested in engineering?", "Which subjects do you enjoy most?", "Any projects or hobbies you're proud of?". Keep it light and conversational.
+3. After about 2 minutes of warm-up (4-6 exchanges), transition smoothly: "Great! Now let's move to the first question."
 4. Once in the QUESTION PHASE, say only the question text directly. Do not add any preamble, screen description, or lead-in before the question.
 5. IMPORTANT: Do NOT say "let's move to the next question". Instead, instruct the student to click the "Submit & Next" button on the screen only after they have answered and are ready to proceed.
 6. ALWAYS stay on-topic for whichever question is currently visible on the screen.
@@ -147,8 +147,10 @@ def build_instructions(student_name: str, questions: list[dict]) -> str:
                 "Do not explain the geometry, tangent behavior, or answer.\n"
             )
     parts.append(
-        "\nWait for the frontend to send the active screen/question state. "
-        "When it arrives, read exactly that visible question text and do not add any preamble before it. "
+        "\nStart by greeting the student warmly by name. "
+        "Begin with a 2-minute warm-up conversation to assess confidence and communication. "
+        "After 4-6 exchanges (about 2 minutes), transition to the questions: 'Great! Now let's move to the first question.' "
+        "For every question, say the question text directly and do not add any preamble before it. "
         "Do not re-read the full question aloud after that first dictation. "
         "If the student is wrong, respond with a neutral follow-up question, not the solution."
     )
@@ -1124,15 +1126,14 @@ async def entrypoint(ctx: JobContext):
     session_started_at = time.time()
     await session.start(agent, room=ctx.room)
     logger.info("✓ AgentSession started — interview running for %d s", INTERVIEW_SECONDS)
-    # Keep the agent ready, but do not invent a prompt before the UI sends the visible question.
+    # Kick off the interview proactively so the student hears the interviewer immediately.
     try:
         session.generate_reply(
             instructions=(
-                "Wait silently for the frontend's question_changed event. "
-                "Do not greet, ask a warm-up question, invent a scenario, or start any topic yourself."
+                "Start now. Greet the student in English and begin the warm-up immediately."
             )
         )
-        logger.info("✓ Initial silent-ready trigger sent")
+        logger.info("✓ Initial greeting trigger sent")
     except Exception as e:
         logger.warning("Could not trigger initial greeting: %s", e)
 

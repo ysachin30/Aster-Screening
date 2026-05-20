@@ -2449,10 +2449,11 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
 
   // Single source of truth: announce when visible question or Q2 part changes.
   useEffect(() => {
+    if (isIntroductionPhase) return;
     const idx = QUESTIONS.findIndex(q => q.id === question.id);
     if (idx < 0) return;
     const key = `${question.id}:${question.id === 2 ? q2Part : 0}`;
-    const forceRead = forceNextQuestionReadRef.current || isIntroductionPhase;
+    const forceRead = forceNextQuestionReadRef.current;
     if (lastAutoAnnounceRef.current === key && !forceRead) return;
     lastAutoAnnounceRef.current = key;
     forceNextQuestionReadRef.current = false;
@@ -2464,10 +2465,6 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
       forceRead,
       room: room.name,
     });
-    if (isIntroductionPhase) {
-      introEndedAtRef.current = Date.now();
-      setIsIntroductionPhase(false);
-    }
     publishQuestionChanged(idx, question, Object.keys(extra).length ? extra : undefined);
   }, [activeQuestionIdx, question, q2Part, isIntroductionPhase, publishQuestionChanged, room.name]);
 
