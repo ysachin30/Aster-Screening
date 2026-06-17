@@ -414,6 +414,7 @@ async def entrypoint(ctx: JobContext):
     question_scores: dict[str, dict] = {}
     current_segment_key: dict[str, str | None] = {"value": None}
     last_question_event_id: dict[str, str | None] = {"value": None}
+    last_finish_event_id: dict[str, str | None] = {"value": None}
     last_answer_guardrail_at: dict[str, float] = {"value": 0.0}
     inflight_question_event_ids: set[str] = set()
     pending_segment_finalize_tasks: set[asyncio.Task] = set()
@@ -982,7 +983,16 @@ async def entrypoint(ctx: JobContext):
             event_id,
         )
 
-        if not finish:
+        if finish:
+            if interview_finished["value"]:
+                logger.info("↺ duplicate finish signal — ignoring retry")
+                return
+            if event_id and event_id == last_finish_event_id["value"]:
+                logger.info("↺ duplicate finish eventId=%s — ignoring retry", event_id)
+                return
+            if event_id:
+                last_finish_event_id["value"] = event_id
+        else:
             if event_id and (event_id == last_question_event_id["value"] or event_id in inflight_question_event_ids):
                 logger.info("↺ duplicate question_changed eventId=%s — ignoring retry", event_id)
                 return

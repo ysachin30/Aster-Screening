@@ -2169,16 +2169,25 @@ function InterviewStage({ name, candidateSequence: initialCandidateSequence, isI
   }, [room.localParticipant, room.name]);
 
   const publishFinish = useCallback((payload: Record<string, unknown>) => {
+    const finishPayload = {
+      ...payload,
+      eventId: String(payload.eventId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+    };
     const sendOnce = async (attempt: number) => {
+      const payloadWithAttempt = {
+        ...finishPayload,
+        sentAt: Date.now(),
+        attempt,
+      };
       try {
-        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payload)), { reliable: true });
+        room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(payloadWithAttempt)), { reliable: true });
         console.log("[LK] finish published", { attempt });
       } catch (e) { console.warn("[LK] finish publishData failed", e); }
       try {
         await fetch(`${BACKEND}/api/question-changed`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ room: room.name, payload }),
+          body: JSON.stringify({ room: room.name, payload: payloadWithAttempt }),
         });
       } catch (e) {
         console.warn("[relay] finish failed", e);

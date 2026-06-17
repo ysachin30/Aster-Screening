@@ -97,6 +97,23 @@ tokenRouter.post("/getToken", async (req, res) => {
   const httpUrl = (process.env.LIVEKIT_URL || "")
     .replace(/^wss:\/\//, "https://")
     .replace(/^ws:\/\//, "http://");
+  const dispatchMetadata = {
+    studentName: name,
+    studentId: identity,
+    // New: full list of questions
+    questions: questions || [],
+    // Legacy single-question fields are also populated from Q1 so older/partial agents still start with context.
+    questionText: questionText || questions?.[0]?.question || "",
+    questionContext: questionContext || questions?.[0]?.context || "",
+    questionHints: questionHints || questions?.[0]?.hints || [],
+  };
+  const dispatchMetadataJson = JSON.stringify(dispatchMetadata);
+  console.log("[dispatch] metadata prepared", {
+    room,
+    identity,
+    questions_count: questions?.length ?? 0,
+    metadata_bytes: Buffer.byteLength(dispatchMetadataJson, "utf8"),
+  });
 
   // 1. Pre-create the room so it exists when we dispatch
   try {
@@ -112,21 +129,19 @@ tokenRouter.post("/getToken", async (req, res) => {
     const dispatch = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
     const existing = await dispatch.listDispatch(room);
     if (existing.length > 0) {
-      console.log("[dispatch] Agent already dispatched for room:", room, "— skipping (count:", existing.length, ")");
+      console.log("[dispatch] Agent already dispatched for room:", room, "— skipping", {
+        count: existing.length,
+        questions_count: questions?.length ?? 0,
+        metadata_bytes: Buffer.byteLength(dispatchMetadataJson, "utf8"),
+      });
     } else {
       const result = await dispatch.createDispatch(room, "", {
-        metadata: JSON.stringify({
-          studentName: name,
-          studentId: identity,
-          // New: full list of questions
-          questions: questions || [],
-          // Legacy single-question fields (kept for backwards compat)
-          questionText: questionText || "",
-          questionContext: questionContext || "",
-          questionHints: questionHints || [],
-        }),
+        metadata: dispatchMetadataJson,
       });
-      console.log("[dispatch] ✓ dispatched — id:", result.id, "room:", room);
+      console.log("[dispatch] ✓ dispatched — id:", result.id, "room:", room, {
+        questions_count: questions?.length ?? 0,
+        metadata_bytes: Buffer.byteLength(dispatchMetadataJson, "utf8"),
+      });
     }
   } catch (e: any) {
     console.error("[dispatch] ✗ FAILED:", e?.message);
